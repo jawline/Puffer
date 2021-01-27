@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+
+echo "Deleting existing routes"
+ip route del 0.0.0.0/0
+
+echo "Bringing up link"
+ip link set ${1} up
+
+echo "Setting IP"
+ip addr add 10.0.0.1/24 dev ${1}
+
+echo "Setting default route"
+ip route add 0.0.0.0/0 via 10.0.0.1 dev ${1}
