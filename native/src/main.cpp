@@ -54,22 +54,11 @@ void process_packet_udp(event_loop_t* loop, struct ip* hdr, char* bytes, size_t 
   len -= sizeof(struct udphdr);
 
   // Now proxy the UDP packet to the destination
-  struct sockaddr_in dst = { 0 };
-  dst.sin_family = AF_INET;
-  dst.sin_addr.s_addr = hdr->daddr;
-  dst.sin_port = udp_hdr->uh_dport;
+  auto dst = lookup_dst_udp(hdr, udp_hdr);
 
   printf("Trying to send a UDP packet\n");
   DROP_GUARD(sendto(found_fd, bytes, len, 0, (struct sockaddr*) &dst, sizeof(dst)) >= 0);
   printf("Sent UDP packet\n");
-}
-
-sockaddr_in lookup_dst(ip* hdr, tcphdr* tcp_hdr) {
-  struct sockaddr_in dst = { 0 };
-  dst.sin_family = AF_INET;
-  dst.sin_addr.s_addr = hdr->daddr;
-  dst.sin_port = tcp_hdr->dest;
-  return dst;
 }
 
 void process_packet_tcp(event_loop_t* loop, struct ip* hdr, char* bytes, size_t len) {
@@ -91,10 +80,11 @@ void process_packet_tcp(event_loop_t* loop, struct ip* hdr, char* bytes, size_t 
     int new_fd = socket(AF_INET, SOCK_DGRAM, IPPROTO_TCP);
     binddev(new_fd);
     set_nonblocking(new_fd);
+    listen_tcp(loop->epoll_fd, new_fd);
     printf("New FD: %i %i\n", new_fd, new_fd >= 0);
     DROP_GUARD(new_fd >= 0);
 
-    auto dst = lookup_dst(hdr, tcp_hdr);
+    auto dst = lookup_dst_tcp(hdr, tcp_hdr);
 
     DROP_GUARD(connect(new_fd, (sockaddr*) &dst, sizeof(dst)));
 
@@ -102,7 +92,8 @@ void process_packet_tcp(event_loop_t* loop, struct ip* hdr, char* bytes, size_t 
     // For TCP sessions we create a tcp_state
 
     // Now we don't actually reply to this new connection yet, just add it into the NAT
-    // When EPOLLOUT fires on the 
+    // When EPOLLOUT fires on the TCP out or HUP fires then we send a related SYN-ACK or
+    // fuck off message 
   }
 }
 
