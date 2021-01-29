@@ -157,6 +157,49 @@ void process_packet_udp(event_loop_t* loop, struct ip* hdr, char* bytes, size_t 
   printf("Sent UDP packet\n");
 }
 
+void mk_ip_hdr(ip* ip_hdr, uint8_t protocol, sockaddr_in* sender,  msg_return* return_addr, size_t packet_len) {
+  ip_hdr->ihl = 5;
+  ip_hdr->version = 4;
+  ip_hdr->tos = 0;
+  ip_hdr->len = packet_len;
+  ip_hdr->id = 0;
+  ip_hdr->flags = 1;
+  ip_hdr->frag_offset = 0;
+  ip_hdr->ttl = 255;
+  ip_hdr->proto = protocol;
+  ip_hdr->saddr = sender->sin_addr.s_addr;
+  ip_hdr->daddr = return_addr->src_ip;
+
+  // TODO: Calculate IPv4 Checksum!
+}
+
+// Construct a UDP packet header
+// Expects the data contents to immediately follow the UDP header for checksumming 
+void mk_udp_hdr(udphdr* udp, size_t datagram_contents_size, sockaddr_in* sender, msg_return* return_addr) {
+}
+
+void create_udp_response(char* dst, size_t mtu, char* data, size_t len, msg_return* return_addr, sockaddr_in* from) {
+
+  // How big will this UDP packet be
+  size_t datagram_size = sizeof(udphdr) + len;
+  size_t packet_size = sizeof(ip) + datagram_size;
+  DROP_GUARD(datagram_size <= mtu);
+
+  // Find offsets in our constructed packet
+  ip* ip_hdr = (ip*) dst;
+  udphdr* udp = (udphdr*) (dst + sizeof(ip));
+  char* contents = dst + sizeof(ip) + sizeof(udphdr);
+
+  // Copy in the data first so that checksumming works 
+  memcpy(contents, data, len);
+
+  // Now make the headers and do checksums
+  mk_ip_hdr(ip_hdr, 17, from, return_addr, packet_size);
+  mk_udp_hdr(udp, len, from, return_addr);
+
+  // Now this packet is ready to write back to the TUN device
+}
+
 void process_tun_packet(event_loop_t* loop, char bytes[MTU], size_t len) {
 
   // Check we received a full IP packet
