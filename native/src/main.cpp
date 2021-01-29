@@ -16,7 +16,7 @@ void process_packet_udp(event_loop_t* loop, struct ip* hdr, char* bytes, size_t 
   DROP_GUARD(len >= sizeof(struct udphdr));
 
   struct udphdr* udp_hdr = (struct udphdr *) bytes;
-  struct ip_port id = ip_port { hdr->daddr, udp_hdr->uh_sport, udp_hdr->uh_dport };
+  struct ip_port_protocol id = ip_port_protocol { hdr->daddr, udp_hdr->uh_sport, udp_hdr->uh_dport, IPPROTO_UDP };
 
   printf("TUN PKT: %i %i %i\n", hdr->daddr, udp_hdr->uh_sport, udp_hdr->uh_dport);
 
@@ -64,10 +64,18 @@ void process_packet_udp(event_loop_t* loop, struct ip* hdr, char* bytes, size_t 
   printf("Sent UDP packet\n");
 }
 
+sockaddr_in lookup_dst(ip* hdr, tcphdr* tcp_hdr) {
+  struct sockaddr_in dst = { 0 };
+  dst.sin_family = AF_INET;
+  dst.sin_addr.s_addr = hdr->daddr;
+  dst.sin_port = tcp_hdr->dest;
+  return dst;
+}
+
 void process_packet_tcp(event_loop_t* loop, struct ip* hdr, char* bytes, size_t len) {
   DROP_GUARD(len >= sizeof(struct tcphdr));
   struct tcphdr* tcp_hdr = (struct tcphdr *) bytes;
-  struct ip_port id = ip_port { hdr->daddr, tcp_hdr->source, tcp_hdr->dest };
+  struct ip_port_protocol id = ip_port_protocol { hdr->daddr, tcp_hdr->source, tcp_hdr->dest, IPPROTO_TCP };
 
   auto fd_scan = loop->udp_pairs.find(id);
   int found_fd;
@@ -76,7 +84,25 @@ void process_packet_tcp(event_loop_t* loop, struct ip* hdr, char* bytes, size_t 
     
   } else {
     // Oooh, this might be a new TCP connection. We need to figure that out (is it a SYN)
-    DROP_GUARD(tcp_hdr->syn);
+    DROP_GUARD(tcp_hdr->syn && !tcp_hdr->ack);
+
+    // Ok, it's a SYN so let's roll with it
+    // Create a new TCP FD
+    int new_fd = socket(AF_INET, SOCK_DGRAM, IPPROTO_TCP);
+    binddev(new_fd);
+    set_nonblocking(new_fd);
+    printf("New FD: %i %i\n", new_fd, new_fd >= 0);
+    DROP_GUARD(new_fd >= 0);
+
+    auto dst = lookup_dst(hdr, tcp_hdr);
+
+    DROP_GUARD(connect(new_fd, (sockaddr*) &dst, sizeof(dst)));
+
+    // We next need to add our new TCP connection into the NAT
+    // For TCP sessions we create a tcp_state
+
+    // Now we don't actually reply to this new connection yet, just add it into the NAT
+    // When EPOLLOUT fires on the 
   }
 }
 

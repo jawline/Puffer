@@ -65,18 +65,19 @@ struct ip {
     uint32_t daddr;
 } __attribute__((packed));
 
-struct ip_port {
+struct ip_port_protocol {
   uint32_t ip;
   uint16_t src_port;
   uint16_t dst_port;
+  uint8_t proto;
 
-  bool operator==(const ip_port &o) const {
-    return memcmp(this, &o, sizeof(ip_port)) == 0; 
+  bool operator==(const ip_port_protocol &o) const {
+    return memcmp(this, &o, sizeof(*this)) == 0; 
   }
 
   // Impl comparison to allow use in a map
-  bool operator<(const ip_port &o) const {
-    return memcmp(this, &o, sizeof(ip_port)) < 0;
+  bool operator<(const ip_port_protocol &o) const {
+    return memcmp(this, &o, sizeof(*this)) < 0;
   }
 };
 
@@ -100,7 +101,7 @@ struct msg_return {
 typedef struct event_loop {
   int epoll_fd;
   int timer_fd;
-  std::map<ip_port, msg_return> udp_pairs;
+  std::map<ip_port_protocol, msg_return> udp_pairs;
   std::map<int, msg_return> udp_return;
 } event_loop_t;
 
