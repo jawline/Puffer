@@ -1,107 +1,9 @@
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <unistd.h>
-#include <sys/socket.h>
-#include <linux/if.h>
-#include <linux/if_tun.h>
-#include <sys/types.h>
-#include <sys/ioctl.h>
-#include <sys/stat.h>
-#include <fcntl.h>
-#include <arpa/inet.h> 
-#include <sys/select.h>
-#include <sys/time.h>
-#include <errno.h>
-#include <stdarg.h>
-#include <sys/epoll.h>
-#include <map>
-#include <netinet/udp.h>
-
-void binddev(int fd) {
-  struct ifreq ifr;
-  memset(&ifr, 0, sizeof(ifr));
-  snprintf(ifr.ifr_name, sizeof(ifr.ifr_name), "wlp2s0");
-  if (setsockopt(fd, SOL_SOCKET, SO_BINDTODEVICE, (void *)&ifr, sizeof(ifr)) < 0) {
-    printf("Woof\n");
-  }
-}
-
-int guard(int r) {
-  if (r < 0) {
-    fprintf(stderr, "Guard was violated\n");
-    exit(1);
-  } else {
-    return r;
-  }
-} 
-
-void set_nonblocking(int fd) {
-  int flags = guard(fcntl(fd, F_GETFL));
-  guard(fcntl(fd, F_SETFL, flags | O_NONBLOCK));
-}
-
-void listen_epollin(int epoll_fd, int fd) {
-  struct epoll_event event = { 0 };
-
-  event.events = EPOLLIN;
-  event.data.fd = fd;
- 
-  guard(epoll_ctl(epoll_fd, EPOLL_CTL_ADD, fd, &event));
-}
-
-#define MTU 1500
-#define MAX_EVENTS 500
-
-#define DROP_GUARD(e) if (!(e)) { \
-  printf("Dropped Packet (%i) (DROP GUARD) %i\n", e, __LINE__); \
-  perror("Reason: "); \
-  return; \
-}
-
-struct ip {
-    uint8_t ihl : 4;
-    uint8_t version : 4;
-    uint8_t tos;
-    uint16_t len;
-    uint16_t id;
-    uint16_t flags : 3;
-    uint16_t frag_offset : 13;
-    uint8_t ttl;
-    uint8_t proto;
-    uint16_t csum;
-    uint32_t saddr;
-    uint32_t daddr;
-} __attribute__((packed));
-
-struct ip_port {
-  uint32_t ip;
-  uint16_t src_port;
-  uint16_t dst_port;
-
-  // Impl comparison to allow use in a map
-  bool operator<(const ip_port &o) const {
-    return memcmp(this, &o, sizeof(ip_port));
-  }
-};
-
-enum FDType {
-  UDP = 0,
-  TCP,
-};
-
-struct msg_return {
-  int fd;
-  uint32_t src_ip;
-  uint16_t src_port;
-  FDType type;
-};
-
-typedef struct event_loop {
-  int epoll_fd;
-  std::map<ip_port, msg_return> udp_pairs;
-  std::map<int, msg_return> udp_return;
-} event_loop_t;
+#include "general.h"
+#include "checksum.h"
+#include "tun.h"
+#include "dev.h"
+#include "util.h"
+#include "packet.h"
 
 void process_packet_icmp(struct ip* hdr, char* bytes, size_t len) {
   // TODO it is possible to manually do ICMP sockets on Android
@@ -114,9 +16,9 @@ void process_packet_udp(event_loop_t* loop, struct ip* hdr, char* bytes, size_t 
   DROP_GUARD(len >= sizeof(struct udphdr));
 
   struct udphdr* udp_hdr = (struct udphdr *) bytes;
-  struct ip_port id = { hdr->daddr, udp_hdr->uh_sport, udp_hdr->uh_dport };
+  struct ip_port id = ip_port { hdr->daddr, udp_hdr->uh_sport, udp_hdr->uh_dport };
 
-  printf("%i %i %i\n", hdr->daddr, udp_hdr->uh_sport, udp_hdr->uh_dport);
+  printf("TUN PKT: %i %i %i\n", hdr->daddr, udp_hdr->uh_sport, udp_hdr->uh_dport);
 
   auto fd_scan = loop->udp_pairs.find(id);
 
@@ -133,9 +35,14 @@ void process_packet_udp(event_loop_t* loop, struct ip* hdr, char* bytes, size_t 
     printf("New FD: %i %i\n", new_fd, new_fd >= 0);
     DROP_GUARD(new_fd >= 0);
 
+    // Fetch the current time
+    struct timespec cur_time;
+    clock_gettime(CLOCK_MONOTONIC, &cur_time);
+
     // Register it
-    loop->udp_pairs[id] = { new_fd, hdr->saddr, udp_hdr->uh_sport, UDP };
+    loop->udp_pairs[id] = msg_return { new_fd, hdr->saddr, udp_hdr->uh_sport, IPPROTO_UDP, cur_time };
     loop->udp_return[new_fd] = loop->udp_pairs[id];
+    printf("RETURN: %i\n", loop->udp_return[new_fd].src_ip);
     listen_epollin(loop->epoll_fd, new_fd);
     set_nonblocking(new_fd);
 
@@ -157,49 +64,6 @@ void process_packet_udp(event_loop_t* loop, struct ip* hdr, char* bytes, size_t 
   printf("Sent UDP packet\n");
 }
 
-void mk_ip_hdr(ip* ip_hdr, uint8_t protocol, sockaddr_in* sender,  msg_return* return_addr, size_t packet_len) {
-  ip_hdr->ihl = 5;
-  ip_hdr->version = 4;
-  ip_hdr->tos = 0;
-  ip_hdr->len = packet_len;
-  ip_hdr->id = 0;
-  ip_hdr->flags = 1;
-  ip_hdr->frag_offset = 0;
-  ip_hdr->ttl = 255;
-  ip_hdr->proto = protocol;
-  ip_hdr->saddr = sender->sin_addr.s_addr;
-  ip_hdr->daddr = return_addr->src_ip;
-
-  // TODO: Calculate IPv4 Checksum!
-}
-
-// Construct a UDP packet header
-// Expects the data contents to immediately follow the UDP header for checksumming 
-void mk_udp_hdr(udphdr* udp, size_t datagram_contents_size, sockaddr_in* sender, msg_return* return_addr) {
-}
-
-void create_udp_response(char* dst, size_t mtu, char* data, size_t len, msg_return* return_addr, sockaddr_in* from) {
-
-  // How big will this UDP packet be
-  size_t datagram_size = sizeof(udphdr) + len;
-  size_t packet_size = sizeof(ip) + datagram_size;
-  DROP_GUARD(datagram_size <= mtu);
-
-  // Find offsets in our constructed packet
-  ip* ip_hdr = (ip*) dst;
-  udphdr* udp = (udphdr*) (dst + sizeof(ip));
-  char* contents = dst + sizeof(ip) + sizeof(udphdr);
-
-  // Copy in the data first so that checksumming works 
-  memcpy(contents, data, len);
-
-  // Now make the headers and do checksums
-  mk_ip_hdr(ip_hdr, 17, from, return_addr, packet_size);
-  mk_udp_hdr(udp, len, from, return_addr);
-
-  // Now this packet is ready to write back to the TUN device
-}
-
 void process_tun_packet(event_loop_t* loop, char bytes[MTU], size_t len) {
 
   // Check we received a full IP packet
@@ -214,11 +78,11 @@ void process_tun_packet(event_loop_t* loop, char bytes[MTU], size_t len) {
   len -= sizeof(struct ip);
 
   switch (hdr->proto) {
-    case 1: {
+    case IPPROTO_ICMP: {
       process_packet_icmp(hdr, rest, len);
       break;
     }
-    case 17: {
+    case IPPROTO_UDP: {
       process_packet_udp(loop, hdr, rest, len);
       break;
     }
@@ -232,7 +96,14 @@ void process_tun_packet(event_loop_t* loop, char bytes[MTU], size_t len) {
 void user_space_ip_proxy(int tunnel_fd) {
   event_loop_t loop;
 
-  loop.epoll_fd = guard(epoll_create(5));
+  loop.epoll_fd = fatal_guard(epoll_create(5));
+  loop.timer_fd = fatal_guard(timerfd_create(CLOCK_MONOTONIC, TFD_NONBLOCK));
+
+  struct itimerspec timespec = { 0 };
+  timespec.it_value.tv_sec = 5;
+  timespec.it_interval.tv_sec = 5;
+
+  timerfd_settime(loop.timer_fd, 0, &timespec, NULL);
 
   printf("Epoll FD: %i\n", loop.epoll_fd);
 
@@ -241,11 +112,16 @@ void user_space_ip_proxy(int tunnel_fd) {
   set_nonblocking(tunnel_fd);
   printf("Made non-blocking\n");
 
+  printf("Preparing epoll listeners\n");
   listen_epollin(loop.epoll_fd, tunnel_fd);
-  printf("Registered\n");
+  listen_epollin(loop.epoll_fd, loop.timer_fd);
+  printf("Setup epoll listeners\n");
+
+  struct timespec cur_time;
 
   while(true) { 
     ssize_t event_count = epoll_wait(loop.epoll_fd, events, MAX_EVENTS, -1);
+    clock_gettime(CLOCK_MONOTONIC, &cur_time);
     for(size_t i = 0; i < event_count; i++) {
       if (events[i].data.fd == tunnel_fd) {
         char bytes[MTU] = { 0 };
@@ -253,8 +129,43 @@ void user_space_ip_proxy(int tunnel_fd) {
         if (readb > 0) {
           process_tun_packet(&loop, bytes, readb);
         }
+      } else if (events[i].data.fd == loop.timer_fd) {
+        printf("TIMER CALL\n");
+
+        // We need to read the number of timer expirations from the timer_fd to make it shut up.
+        uint64_t time_read;
+        if (read(events[i].data.fd, &time_read, sizeof(time_read)) < 0) {
+          printf("WAAH\n");
+        }
+
+        // Now expire any session that has been around too long
+        auto it = loop.udp_return.begin();
+        while (it != loop.udp_return.end()) {
+          auto tgt = it++;
+          uint64_t age = cur_time.tv_sec - (*tgt).second.last_use.tv_sec;
+          printf("%ld\n", age);
+          if (age > 30) {
+            int target_fd = (*tgt).second.fd;
+            printf("Expiring a UDP session (FD %i\n)\n", target_fd);
+            fatal_guard(close(target_fd));
+
+            // Find and remove the outbound path NAT
+            auto oit = loop.udp_pairs.begin();
+            while (oit != loop.udp_pairs.end()) {
+              auto tgt = oit++;
+              printf("Scan: %i\n", (*tgt).second.fd);
+              if ((*tgt).second.fd == target_fd) {
+                printf("Found and erased from outbound\n");
+                loop.udp_pairs.erase(tgt);
+              }
+            }
+            loop.udp_return.erase(tgt);
+          }
+        }
+
+        printf("TIMER DONE\n");
       } else {
-        printf("other FD read\n");
+        printf("FD: %i read\n", events[i].data.fd);
         char buf[65536];
         sockaddr_in addr;
         socklen_t addr_len = sizeof(addr);
@@ -263,37 +174,18 @@ void user_space_ip_proxy(int tunnel_fd) {
         auto fd_scan = loop.udp_return.find(events[i].data.fd);
         if (fd_scan != loop.udp_return.end()) {
           printf("Found a return path\n");
+          char ipp[1500];
+          ssize_t pkt_size;
+          msg_return return_addr = (*fd_scan).second;
+          printf("%i\n", return_addr.src_ip);
+          DROP_GUARD((pkt_size = assemble_udp_packet(ipp, 1500, buf, len, &return_addr, &addr)) > 0);
+          printf("Created a %li byte packet\n", pkt_size);
+          (*fd_scan).second.last_use = cur_time;
+          write(tunnel_fd, ipp, pkt_size);
         }
       }
     }
   }
-}
-
-int tun_alloc(char const*dev, int flags) {
-
-  struct ifreq ifr;
-  int fd, err;
-
-  if((fd = open("/dev/net/tun", O_RDWR)) < 0 ) {
-    perror("Opening /dev/net/tun");
-    return fd;
-  }
-
-  memset(&ifr, 0, sizeof(ifr));
-
-  ifr.ifr_flags = flags;
-
-  if (*dev) {
-    strncpy(ifr.ifr_name, dev, IFNAMSIZ);
-  }
-
-  if( (err = ioctl(fd, TUNSETIFF, (void *)&ifr)) < 0 ) {
-    perror("ioctl(TUNSETIFF)");
-    close(fd);
-    return err;
-  }
-
-  return fd;
 }
 
 int main() {
