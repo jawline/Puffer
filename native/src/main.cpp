@@ -62,6 +62,8 @@ void process_packet_udp(event_loop_t* loop, struct ip* hdr, char* bytes, size_t 
 }
 
 void process_packet_tcp(event_loop_t* loop, struct ip* hdr, char* bytes, size_t len) {
+  printf("New TCP packet\n");
+
   DROP_GUARD(len >= sizeof(struct tcphdr));
   struct tcphdr* tcp_hdr = (struct tcphdr *) bytes;
   struct ip_port_protocol id = ip_port_protocol { hdr->daddr, tcp_hdr->source, tcp_hdr->dest, IPPROTO_TCP };
@@ -70,17 +72,22 @@ void process_packet_tcp(event_loop_t* loop, struct ip* hdr, char* bytes, size_t 
   int found_fd;
 
   if (fd_scan != loop->udp_pairs.end()) {
-    
+    printf("Received a FOLLOW UP TCP!\n");
+    if (tcp_hdr->syn && !tcp_hdr->ack) {
+      printf("The TCP connection REALLY wants to be friends\n");
+    }
   } else {
     // Oooh, this might be a new TCP connection. We need to figure that out (is it a SYN)
     DROP_GUARD(tcp_hdr->syn && !tcp_hdr->ack);
 
+    printf("Creating a new TCP connection\n");
+
     // Ok, it's a SYN so let's roll with it
     // Create a new TCP FD
-    int new_fd = socket(AF_INET, SOCK_DGRAM, IPPROTO_TCP);
+    int new_fd;
+    DROP_GUARD((new_fd = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP)) >= 0);
     binddev(new_fd);
     set_nonblocking(new_fd);
-    listen_tcp(loop->epoll_fd, new_fd);
     printf("New FD: %i %i\n", new_fd, new_fd >= 0);
     DROP_GUARD(new_fd >= 0);
 
@@ -88,12 +95,24 @@ void process_packet_tcp(event_loop_t* loop, struct ip* hdr, char* bytes, size_t 
 
     DROP_GUARD(connect(new_fd, (sockaddr*) &dst, sizeof(dst)));
 
+    // Fetch the current time
+    struct timespec cur_time;
+    clock_gettime(CLOCK_MONOTONIC, &cur_time);
+
     // We next need to add our new TCP connection into the NAT
     // For TCP sessions we create a tcp_state
+    struct tcp_state* state = new struct tcp_state;
+    state->seq = 0;
+    state->ack = 0;
+    state->connected = false;
+
+    loop->udp_pairs[id] = msg_return { new_fd, hdr->saddr, tcp_hdr->source, IPPROTO_TCP, cur_time, std::shared_ptr<struct tcp_state>(state) };
+    loop->udp_return[new_fd] = loop->udp_pairs[id];
 
     // Now we don't actually reply to this new connection yet, just add it into the NAT
     // When EPOLLOUT fires on the TCP out or HUP fires then we send a related SYN-ACK or
     // fuck off message 
+    initial_listen_tcp(loop->epoll_fd, new_fd);
   }
 }
 
@@ -119,6 +138,10 @@ void process_tun_packet(event_loop_t* loop, char bytes[MTU], size_t len) {
       process_packet_udp(loop, hdr, rest, len);
       break;
     }
+    case IPPROTO_TCP: {
+      process_packet_tcp(loop, hdr, rest, len);
+      break;
+    }
     default: {
       printf("Unsupported IP/protocol; dropped %i\n", hdr->proto);
       return;
@@ -136,6 +159,7 @@ void do_nat_cleanup(event_loop_t& loop, timespec& cur_time) {
     if (age > 30) {
       int target_fd = (*tgt).second.fd;
       printf("Expiring a UDP session (FD %i\n)\n", target_fd);
+      stop_listen(loop.epoll_fd, target_fd);
       fatal_guard(close(target_fd));
 
       // Find and remove the outbound path NAT
@@ -153,9 +177,22 @@ void do_nat_cleanup(event_loop_t& loop, timespec& cur_time) {
   }
 }
 
+void return_a_udp_packet(char* data, size_t len, msg_return& return_addr, event_loop_t& loop, sockaddr_in& addr) {
+  printf("Found a return path\n");
+  char ipp[1500];
+  ssize_t pkt_size;
+
+  printf("%i\n", return_addr.src_ip);
+  DROP_GUARD((pkt_size = assemble_udp_packet(ipp, 1500, data, len, &return_addr, &addr)) > 0);
+
+  printf("Created a %li byte packet\n", pkt_size);
+  write(loop.tunnel_fd, ipp, pkt_size);
+}
+
 void user_space_ip_proxy(int tunnel_fd) {
   event_loop_t loop;
 
+  loop.tunnel_fd = tunnel_fd;
   loop.epoll_fd = fatal_guard(epoll_create(5));
   loop.timer_fd = fatal_guard(timerfd_create(CLOCK_MONOTONIC, TFD_NONBLOCK));
 
@@ -195,23 +232,39 @@ void user_space_ip_proxy(int tunnel_fd) {
         do_nat_cleanup(loop, cur_time);
         printf("TIMER DONE\n");
       } else {
-        printf("FD: %i read\n", events[i].data.fd);
-        char buf[65536];
-        sockaddr_in addr;
-        socklen_t addr_len = sizeof(addr);
-        ssize_t len = recvfrom(events[i].data.fd, buf, 65536, 0, (sockaddr *) &addr, &addr_len);
-        printf("Read from %i %i a %li byte response\n", addr.sin_addr.s_addr, addr.sin_port, len);
         auto fd_scan = loop.udp_return.find(events[i].data.fd);
         if (fd_scan != loop.udp_return.end()) {
-          printf("Found a return path\n");
-          char ipp[1500];
-          ssize_t pkt_size;
-          msg_return return_addr = (*fd_scan).second;
-          printf("%i\n", return_addr.src_ip);
-          DROP_GUARD((pkt_size = assemble_udp_packet(ipp, 1500, buf, len, &return_addr, &addr)) > 0);
-          printf("Created a %li byte packet\n", pkt_size);
-          (*fd_scan).second.last_use = cur_time;
-          write(tunnel_fd, ipp, pkt_size);
+          if (events[i].events & EPOLLIN) {
+          printf("FD: %i read\n", events[i].data.fd);
+          char buf[65536];
+          sockaddr_in addr;
+          socklen_t addr_len = sizeof(addr);
+          ssize_t len = recvfrom(events[i].data.fd, buf, 65536, 0, (sockaddr *) &addr, &addr_len);
+
+          if (len < 0) {
+            continue;
+          }
+
+          printf("Read from %i %i a %li byte response\n", addr.sin_addr.s_addr, addr.sin_port, len);
+            auto proto = (*fd_scan).second.proto;
+            (*fd_scan).second.last_use = cur_time;
+            printf("Socket Proto: %i\n", proto);
+            switch (proto) {
+              case IPPROTO_UDP: {
+                auto ret = (*fd_scan).second;
+                return_a_udp_packet(buf, len, ret, loop, addr);
+                break;
+              }
+              case IPPROTO_TCP:
+                printf("Uh, what's going on!? TCP\n");
+                break;
+            }
+          }
+          if (events[i].events & EPOLLOUT) {
+            printf("TCP Connected - it's TIME TO SEND A SYN-ACK\n");
+            stop_listen(loop.epoll_fd, events[i].data.fd);
+            listen_tcp(loop.epoll_fd, events[i].data.fd);
+          }
         }
       }
     }

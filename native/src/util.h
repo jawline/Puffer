@@ -15,13 +15,26 @@ static inline void listen_epollin(int epoll_fd, int fd) {
   fatal_guard(epoll_ctl(epoll_fd, EPOLL_CTL_ADD, fd, &event));
 }
 
-static inline void listen_tcp(int epoll_fd, int fd) {
+static inline void initial_listen_tcp(int epoll_fd, int fd) {
   struct epoll_event event = { 0 };
 
-  event.events = EPOLLIN | EPOLLOUT | EPOLLHUP;
+  event.events = EPOLLOUT | EPOLLHUP;
   event.data.fd = fd;
  
   fatal_guard(epoll_ctl(epoll_fd, EPOLL_CTL_ADD, fd, &event));
+}
+
+static inline void listen_tcp(int epoll_fd, int fd) {
+  struct epoll_event event = { 0 };
+
+  event.events = EPOLLIN | EPOLLHUP;
+  event.data.fd = fd;
+ 
+  fatal_guard(epoll_ctl(epoll_fd, EPOLL_CTL_ADD, fd, &event));
+}
+
+static inline void stop_listen(int epoll_fd, int fd) {
+  fatal_guard(epoll_ctl(epoll_fd, EPOLL_CTL_DEL, fd, nullptr));
 }
 
 static inline void clear_timerfd(int timer_fd) {

@@ -91,7 +91,7 @@ struct msg_return {
   int fd;
   uint32_t src_ip;
   uint16_t src_port;
-  uint8_t type;
+  uint8_t proto;
   struct timespec last_use;
 
   // Only set on TCP packets
@@ -99,6 +99,7 @@ struct msg_return {
 };
 
 typedef struct event_loop {
+  int tunnel_fd;
   int epoll_fd;
   int timer_fd;
   std::map<ip_port_protocol, msg_return> udp_pairs;
