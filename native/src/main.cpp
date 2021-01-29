@@ -40,7 +40,7 @@ void process_packet_udp(event_loop_t* loop, struct ip* hdr, char* bytes, size_t 
     clock_gettime(CLOCK_MONOTONIC, &cur_time);
 
     // Register it
-    loop->udp_pairs[id] = msg_return { new_fd, hdr->saddr, udp_hdr->uh_sport, IPPROTO_UDP, cur_time };
+    loop->udp_pairs[id] = msg_return { new_fd, hdr->saddr, udp_hdr->uh_sport, IPPROTO_UDP, cur_time, nullptr };
     loop->udp_return[new_fd] = loop->udp_pairs[id];
     printf("RETURN: %i\n", loop->udp_return[new_fd].src_ip);
     listen_epollin(loop->epoll_fd, new_fd);
@@ -62,6 +62,22 @@ void process_packet_udp(event_loop_t* loop, struct ip* hdr, char* bytes, size_t 
   printf("Trying to send a UDP packet\n");
   DROP_GUARD(sendto(found_fd, bytes, len, 0, (struct sockaddr*) &dst, sizeof(dst)) >= 0);
   printf("Sent UDP packet\n");
+}
+
+void process_packet_tcp(event_loop_t* loop, struct ip* hdr, char* bytes, size_t len) {
+  DROP_GUARD(len >= sizeof(struct tcphdr));
+  struct tcphdr* tcp_hdr = (struct tcphdr *) bytes;
+  struct ip_port id = ip_port { hdr->daddr, tcp_hdr->source, tcp_hdr->dest };
+
+  auto fd_scan = loop->udp_pairs.find(id);
+  int found_fd;
+
+  if (fd_scan != loop->udp_pairs.end()) {
+    
+  } else {
+    // Oooh, this might be a new TCP connection. We need to figure that out (is it a SYN)
+    DROP_GUARD(tcp_hdr->syn);
+  }
 }
 
 void process_tun_packet(event_loop_t* loop, char bytes[MTU], size_t len) {
@@ -89,6 +105,33 @@ void process_tun_packet(event_loop_t* loop, char bytes[MTU], size_t len) {
     default: {
       printf("Unsupported IP/protocol; dropped %i\n", hdr->proto);
       return;
+    }
+  }
+}
+
+void do_nat_cleanup(event_loop_t& loop, timespec& cur_time) {
+  // Now expire any session that has been around too long
+  auto it = loop.udp_return.begin();
+  while (it != loop.udp_return.end()) {
+    auto tgt = it++;
+    uint64_t age = cur_time.tv_sec - (*tgt).second.last_use.tv_sec;
+    printf("%ld\n", age);
+    if (age > 30) {
+      int target_fd = (*tgt).second.fd;
+      printf("Expiring a UDP session (FD %i\n)\n", target_fd);
+      fatal_guard(close(target_fd));
+
+      // Find and remove the outbound path NAT
+      auto oit = loop.udp_pairs.begin();
+      while (oit != loop.udp_pairs.end()) {
+        auto tgt = oit++;
+        printf("Scan: %i\n", (*tgt).second.fd);
+        if ((*tgt).second.fd == target_fd) {
+          printf("Found and erased from outbound\n");
+          loop.udp_pairs.erase(tgt);
+        }
+      }
+      loop.udp_return.erase(tgt);
     }
   }
 }
@@ -131,38 +174,8 @@ void user_space_ip_proxy(int tunnel_fd) {
         }
       } else if (events[i].data.fd == loop.timer_fd) {
         printf("TIMER CALL\n");
-
-        // We need to read the number of timer expirations from the timer_fd to make it shut up.
-        uint64_t time_read;
-        if (read(events[i].data.fd, &time_read, sizeof(time_read)) < 0) {
-          printf("WAAH\n");
-        }
-
-        // Now expire any session that has been around too long
-        auto it = loop.udp_return.begin();
-        while (it != loop.udp_return.end()) {
-          auto tgt = it++;
-          uint64_t age = cur_time.tv_sec - (*tgt).second.last_use.tv_sec;
-          printf("%ld\n", age);
-          if (age > 30) {
-            int target_fd = (*tgt).second.fd;
-            printf("Expiring a UDP session (FD %i\n)\n", target_fd);
-            fatal_guard(close(target_fd));
-
-            // Find and remove the outbound path NAT
-            auto oit = loop.udp_pairs.begin();
-            while (oit != loop.udp_pairs.end()) {
-              auto tgt = oit++;
-              printf("Scan: %i\n", (*tgt).second.fd);
-              if ((*tgt).second.fd == target_fd) {
-                printf("Found and erased from outbound\n");
-                loop.udp_pairs.erase(tgt);
-              }
-            }
-            loop.udp_return.erase(tgt);
-          }
-        }
-
+        clear_timerfd(events[i].data.fd);
+        do_nat_cleanup(loop, cur_time);
         printf("TIMER DONE\n");
       } else {
         printf("FD: %i read\n", events[i].data.fd);

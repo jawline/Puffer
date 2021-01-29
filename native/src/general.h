@@ -1,5 +1,6 @@
 #ifndef _GR
 #define _GR
+#include <memory>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -7,6 +8,7 @@
 #include <sys/socket.h>
 #include <linux/if.h>
 #include <linux/if_tun.h>
+#include <linux/tcp.h>
 #include <sys/types.h>
 #include <sys/ioctl.h>
 #include <sys/stat.h>
@@ -78,12 +80,21 @@ struct ip_port {
   }
 };
 
+struct tcp_state {
+  uint32_t seq;
+  uint32_t ack;
+  bool connected;
+};
+
 struct msg_return {
   int fd;
   uint32_t src_ip;
   uint16_t src_port;
   uint8_t type;
   struct timespec last_use;
+
+  // Only set on TCP packets
+  std::shared_ptr<tcp_state> state;
 };
 
 typedef struct event_loop {
