@@ -23,6 +23,6 @@ void assemble_udp_header(const ip* ip, udphdr* udp, size_t datagram_contents_siz
  */
 ssize_t assemble_udp_packet(char* dst, size_t mtu, char* data, size_t len, msg_return* return_addr, sockaddr_in* from);
 
-ssize_t assemble_tcp_packet(char* dst, size_t mtu, char* data, size_t len, msg_return* return_addr, sockaddr_in* from, bool syn, bool ack);
+ssize_t assemble_tcp_packet(char* dst, size_t mtu, uint32_t seq, uint32_t ack, char* data, size_t len, msg_return* return_addr, sockaddr_in* from, bool pshf, bool synf, bool ackf, bool finf);
 
 #endif

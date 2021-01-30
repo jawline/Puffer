@@ -40,16 +40,30 @@ void assemble_udp_header(const ip* ip, udphdr* udp, size_t datagram_contents_siz
   printf("UDP CHECK: %x\n", udp->check);
 }
 
-void assemble_tcp_header(const ip* ip, tcphdr* tcp, size_t datagram_contents_size, const sockaddr_in* sender, const msg_return* return_addr, bool syn, bool ack, bool fin) {
+uint16_t checksum(const ip* ip, uint8_t* header, size_t header_len, uint8_t* data, size_t data_len, uint8_t proto, uint32_t len) {
+  return wrapsum(checksum((unsigned char *)header, header_len,
+      checksum(data, data_len, checksum((unsigned char *)&ip->saddr,
+      2 * sizeof(ip->saddr),
+      proto + len))));
+}
+
+void assemble_tcp_header(const ip* ip, tcphdr* tcp, uint32_t seq, uint32_t ack, size_t datagram_contents_size, const sockaddr_in* sender, const msg_return* return_addr, bool pshf, bool synf, bool ackf, bool finf) {
 
   memset(tcp, 0, sizeof(*tcp));
 
   tcp->source = sender->sin_port;
   tcp->dest = return_addr->src_port;
+  tcp->doff = 5;
+  tcp->seq = htonl(seq);
+  tcp->ack_seq = htonl(ack);
+  tcp->window = 65535;
 
-  if (syn) { tcp->syn = 1; }
-  if (ack) { tcp->ack = 1; }
-  if (fin) { tcp->fin = 1; }  
+  printf("SEQ: %u (%u) ACK: %u (%u)\n", seq, tcp->seq, ack, tcp->ack);
+
+  if (pshf) { tcp->psh = 1; }
+  if (synf) { tcp->syn = 1; }
+  if (ackf) { tcp->ack = 1; }
+  if (finf) { tcp->fin = 1; } 
 
   // Calculate the UDP checksum
   // Must be zero to start
@@ -58,7 +72,7 @@ void assemble_tcp_header(const ip* ip, tcphdr* tcp, size_t datagram_contents_siz
   uint16_t sum = wrapsum(checksum((unsigned char *)tcp, sizeof(*tcp),
       checksum((unsigned char *) (tcp + 1), datagram_contents_size, checksum((unsigned char *)&ip->saddr,
       2 * sizeof(ip->saddr),
-      IPPROTO_UDP + (uint32_t)ntohs(ip->len)))));
+      ip->proto + (uint32_t)(ntohs(ip->len) - sizeof(*ip))))));
 
   tcp->check = sum;
 
@@ -88,7 +102,7 @@ ssize_t assemble_udp_packet(char* dst, size_t mtu, char* data, size_t len, msg_r
   return packet_size;
 }
 
-ssize_t assemble_tcp_packet(char* dst, size_t mtu, char* data, size_t len, msg_return* return_addr, sockaddr_in* from, bool syn, bool ack) {
+ssize_t assemble_tcp_packet(char* dst, size_t mtu, uint32_t seq, uint32_t ack, char* data, size_t len, msg_return* return_addr, sockaddr_in* from, bool pshf, bool synf, bool ackf, bool finf) {
 
   // How big will this UDP packet be
   size_t datagram_size = sizeof(tcphdr) + len;
@@ -103,9 +117,14 @@ ssize_t assemble_tcp_packet(char* dst, size_t mtu, char* data, size_t len, msg_r
   // Copy in the data first so that checksumming works 
   memcpy(contents, data, len);
 
+  for (size_t i = 0; i < 10; i++) {
+    printf("%c ", contents[i]);
+  }
+  printf("\n");
+
   // Now make the headers and do checksums
-  assemble_ip_header(ip_hdr, IPPROTO_UDP, from, return_addr, packet_size);
-  assemble_tcp_header(ip_hdr, tcp, len, from, return_addr, syn, ack, false);
+  assemble_ip_header(ip_hdr, IPPROTO_TCP, from, return_addr, packet_size);
+  assemble_tcp_header(ip_hdr, tcp, seq, ack, len, from, return_addr, pshf, synf, ackf, finf);
 
   return packet_size;
 }

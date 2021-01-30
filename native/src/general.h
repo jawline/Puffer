@@ -29,6 +29,8 @@
 #define MTU 1500
 #define MAX_EVENTS 500
 
+#define MAX(a, b) ((a > b) ? a : b)
+
 #define DROP_GUARD(e) if (!(e)) { \
   printf("Dropped Packet (%i) (DROP GUARD) %i\n", e, __LINE__); \
   perror("Reason: "); \
@@ -88,7 +90,8 @@ struct tcp_state {
   uint32_t us_seq;
   uint32_t us_ack;
 
-  bool connected;
+  bool sent_syn_ack;
+  bool recv_first_ack;
 };
 
 struct msg_return {

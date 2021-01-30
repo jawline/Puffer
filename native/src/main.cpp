@@ -5,6 +5,37 @@
 #include "util.h"
 #include "packet.h"
 
+void return_a_udp_packet(char* data, size_t len, msg_return& return_addr, event_loop_t& loop, sockaddr_in& addr) {
+  printf("Found a return path\n");
+  char ipp[1500];
+  ssize_t pkt_size;
+
+  printf("%i\n", return_addr.src_ip);
+  DROP_GUARD((pkt_size = assemble_udp_packet(ipp, 1500, data, len, &return_addr, &addr)) > 0);
+
+  printf("Created a %li byte packet\n", pkt_size);
+  write(loop.tunnel_fd, ipp, pkt_size);
+}
+
+void return_a_tcp_packet(char* data, size_t len, msg_return& return_addr, event_loop_t& loop, sockaddr_in& addr) {
+  printf("Found a return path\n");
+  char ipp[1500];
+
+  auto tcp_state = return_addr.state;
+
+  bool is_psh = data != nullptr;
+
+  size_t pkt_sz = assemble_tcp_packet(ipp, 1500, tcp_state->us_seq, tcp_state->them_seq + 1, data, len, &return_addr, &addr, is_psh, false, true, false);
+
+  if (len > 0) {
+    tcp_state->us_seq += len;
+  }
+
+  DROP_GUARD(pkt_sz > 0);
+  printf("Created a %li byte packet\n", pkt_sz);
+  write(loop.tunnel_fd, ipp, pkt_sz);
+}
+
 void process_packet_icmp(struct ip* hdr, char* bytes, size_t len) {
   // TODO it is possible to manually do ICMP sockets on Android
   // int sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_ICMP);
@@ -61,20 +92,73 @@ void process_packet_udp(event_loop_t* loop, struct ip* hdr, char* bytes, size_t 
   printf("Sent UDP packet\n");
 }
 
-void process_packet_tcp(event_loop_t* loop, struct ip* hdr, char* bytes, size_t len) {
+void process_packet_tcp(event_loop_t& loop, struct ip* hdr, char* bytes, size_t len) {
   printf("New TCP packet\n");
 
   DROP_GUARD(len >= sizeof(struct tcphdr));
   struct tcphdr* tcp_hdr = (struct tcphdr *) bytes;
   struct ip_port_protocol id = ip_port_protocol { hdr->daddr, tcp_hdr->source, tcp_hdr->dest, IPPROTO_TCP };
 
-  auto fd_scan = loop->udp_pairs.find(id);
+  auto fd_scan = loop.udp_pairs.find(id);
   int found_fd;
 
-  if (fd_scan != loop->udp_pairs.end()) {
+  if (fd_scan != loop.udp_pairs.end()) {
     printf("Received a FOLLOW UP TCP!\n");
+    int fd = fd_scan->second.fd;
+    auto ret = fd_scan->second;
+    auto tcp_state = fd_scan->second.state;
+
     if (tcp_hdr->syn && !tcp_hdr->ack) {
       printf("The TCP connection REALLY wants to be friends\n");
+    }
+
+    if (!tcp_hdr->syn && tcp_hdr->ack && tcp_state->sent_syn_ack && !tcp_state->recv_first_ack) {
+      printf("RECV First ACK. Fully connected!\n");
+      printf("Woah. Might actually be OK to proxy data now!?. 黐線\n");
+      printf("Preparing epollin\n");
+      tcp_state->recv_first_ack = true;
+      listen_tcp(loop.epoll_fd, fd_scan->second.fd);
+    }
+
+    if (tcp_state->recv_first_ack && tcp_hdr->psh) {
+      if (tcp_state->us_ack < ntohl(tcp_hdr->seq)) {
+        printf("HEY - HE WANTS TO SEND SOME FUCKING DATA %u %u\nWAKE UP!\n", tcp_state->them_seq, ntohl(tcp_hdr->seq));
+        char* data_start = bytes + (tcp_hdr->doff << 2);
+        size_t data_size = ntohs(hdr->len) - sizeof(ip) - (tcp_hdr->doff << 2);
+        for (size_t i = 0; i < data_size; i++) {
+          printf("%c", data_start[i]);
+        }
+        printf("\n");
+        DROP_GUARD(send(fd, data_start, data_size, 0) >= 0);
+        tcp_state->us_ack = ntohl(tcp_hdr->seq);
+
+        sockaddr_in addr = { 0 };
+        addr.sin_family = AF_INET;
+        addr.sin_addr.s_addr = ret.dst_ip;
+        addr.sin_port = ret.dst_port;
+
+        // Now generate the ack
+        printf("ACKIN\n");
+        tcp_state->them_seq = ntohl(tcp_hdr->seq) + data_size - 1;
+        return_a_tcp_packet(nullptr, 0, ret, loop, addr);
+      } else {
+        printf("FUCKIN REPEATS %u %u\n", tcp_state->them_seq, ntohl(tcp_hdr->seq));
+      }
+    }
+
+    if (tcp_hdr->fin) {
+      shutdown(fd, SHUT_WR);
+
+      printf("ACKNOWLEDGING THE FIN\n");
+      sockaddr_in addr = { 0 };
+      addr.sin_family = AF_INET;
+      addr.sin_addr.s_addr = ret.dst_ip;
+      addr.sin_port = ret.dst_port;
+
+      char ipp[1500];
+      size_t pkt_sz = assemble_tcp_packet(ipp, 1500, tcp_state->us_seq, ntohl(tcp_hdr->seq) + 1, NULL, 0, &ret, &addr, false, false, true, false);
+      DROP_GUARD(pkt_sz > 0);
+      DROP_GUARD(write(loop.tunnel_fd, ipp, pkt_sz) >= 0);
     }
   } else {
     // Oooh, this might be a new TCP connection. We need to figure that out (is it a SYN)
@@ -102,23 +186,26 @@ void process_packet_tcp(event_loop_t* loop, struct ip* hdr, char* bytes, size_t 
     // We next need to add our new TCP connection into the NAT
     // For TCP sessions we create a tcp_state
     struct tcp_state* state = new struct tcp_state;
-    state->them_seq = ntohs(tcp_hdr->seq);
-    state->them_ack = ntohs(tcp_hdr->ack_seq);
+    state->them_seq = ntohl(tcp_hdr->seq);
+    state->them_ack = ntohl(tcp_hdr->ack_seq);
     state->us_seq = rand();
     state->us_ack = state->them_seq;
-    state->connected = false;
+    state->sent_syn_ack = false;
+    state->recv_first_ack = false;
 
-    loop->udp_pairs[id] = msg_return { new_fd, hdr->saddr, tcp_hdr->source, hdr->daddr, tcp_hdr->dest, IPPROTO_TCP, cur_time, std::shared_ptr<struct tcp_state>(state) };
-    loop->udp_return[new_fd] = loop->udp_pairs[id];
+    printf("Initial packet sequences: %u %u\n", state->them_seq, state->them_ack);
+
+    loop.udp_pairs[id] = msg_return { new_fd, hdr->saddr, tcp_hdr->source, hdr->daddr, tcp_hdr->dest, IPPROTO_TCP, cur_time, std::shared_ptr<struct tcp_state>(state) };
+    loop.udp_return[new_fd] = loop.udp_pairs[id];
 
     // Now we don't actually reply to this new connection yet, just add it into the NAT
     // When EPOLLOUT fires on the TCP out or HUP fires then we send a related SYN-ACK or
     // fuck off message 
-    initial_listen_tcp(loop->epoll_fd, new_fd);
+    initial_listen_tcp(loop.epoll_fd, new_fd);
   }
 }
 
-void process_tun_packet(event_loop_t* loop, char bytes[MTU], size_t len) {
+void process_tun_packet(event_loop_t& loop, char bytes[MTU], size_t len) {
 
   // Check we received a full IP packet
   DROP_GUARD(len >= sizeof(struct ip));
@@ -137,7 +224,7 @@ void process_tun_packet(event_loop_t* loop, char bytes[MTU], size_t len) {
       break;
     }
     case IPPROTO_UDP: {
-      process_packet_udp(loop, hdr, rest, len);
+      process_packet_udp(&loop, hdr, rest, len);
       break;
     }
     case IPPROTO_TCP: {
@@ -179,17 +266,6 @@ void do_nat_cleanup(event_loop_t& loop, timespec& cur_time) {
   }
 }
 
-void return_a_udp_packet(char* data, size_t len, msg_return& return_addr, event_loop_t& loop, sockaddr_in& addr) {
-  printf("Found a return path\n");
-  char ipp[1500];
-  ssize_t pkt_size;
-
-  printf("%i\n", return_addr.src_ip);
-  DROP_GUARD((pkt_size = assemble_udp_packet(ipp, 1500, data, len, &return_addr, &addr)) > 0);
-
-  printf("Created a %li byte packet\n", pkt_size);
-  write(loop.tunnel_fd, ipp, pkt_size);
-}
 
 void user_space_ip_proxy(int tunnel_fd) {
   event_loop_t loop;
@@ -226,7 +302,7 @@ void user_space_ip_proxy(int tunnel_fd) {
         char bytes[MTU] = { 0 };
         ssize_t readb = read(tunnel_fd, bytes, MTU);
         if (readb > 0) {
-          process_tun_packet(&loop, bytes, readb);
+          process_tun_packet(loop, bytes, readb);
         }
       } else if (events[i].data.fd == loop.timer_fd) {
         printf("TIMER CALL\n");
@@ -241,7 +317,7 @@ void user_space_ip_proxy(int tunnel_fd) {
           char buf[65536];
           sockaddr_in addr;
           socklen_t addr_len = sizeof(addr);
-          ssize_t len = recvfrom(events[i].data.fd, buf, 65536, 0, (sockaddr *) &addr, &addr_len);
+          ssize_t len = recvfrom(events[i].data.fd, buf, 1350, 0, (sockaddr *) &addr, &addr_len);
 
           if (len < 0) {
             continue;
@@ -250,15 +326,20 @@ void user_space_ip_proxy(int tunnel_fd) {
           printf("Read from %i %i a %li byte response\n", addr.sin_addr.s_addr, addr.sin_port, len);
             auto proto = (*fd_scan).second.proto;
             (*fd_scan).second.last_use = cur_time;
+            auto ret = (*fd_scan).second;
             printf("Socket Proto: %i\n", proto);
             switch (proto) {
               case IPPROTO_UDP: {
-                auto ret = (*fd_scan).second;
                 return_a_udp_packet(buf, len, ret, loop, addr);
                 break;
               }
               case IPPROTO_TCP:
-                printf("Uh, what's going on!? TCP\n");
+                printf("WE GOT A TCP PACKET TO RETURN. FABRICATE A PSH %li\n", len);
+                if (len == 0) {
+                  printf("Connection gracefully closed\nTime to fab a fucking FIN\n");
+                } else {
+                  return_a_tcp_packet(buf, len, ret, loop, addr);
+                }
                 break;
             }
           }
@@ -268,19 +349,46 @@ void user_space_ip_proxy(int tunnel_fd) {
             char ipp[1500];
             ssize_t ipp_sz;
             auto ret = (*fd_scan).second;
+            auto tcp_state = ret.state;
 
             sockaddr_in addr = { 0 };
             addr.sin_family = AF_INET;
             addr.sin_addr.s_addr = ret.dst_ip;
             addr.sin_port = ret.dst_port;
 
-            size_t pkt_sz = assemble_tcp_packet(ipp, 1500, NULL, 0, &ret, &addr, true, true);
+            printf("SYN-ACK numbers %u %u\n", tcp_state->us_seq, tcp_state->them_seq + 1);
+            size_t pkt_sz = assemble_tcp_packet(ipp, 1500, tcp_state->us_seq++, tcp_state->them_seq + 1, NULL, 0, &ret, &addr, false, true, true, false);
             DROP_GUARD(pkt_sz > 0);
             DROP_GUARD(write(loop.tunnel_fd, ipp, pkt_sz) >= 0);
 
-            // After sending a SYN-ACK 
+            // After sending a SYN-ACK we expect an ACK. Don't touch the REMOTE SOCKET until then
             stop_listen(loop.epoll_fd, events[i].data.fd);
-            listen_tcp(loop.epoll_fd, events[i].data.fd);
+
+            tcp_state->sent_syn_ack = true;
+          }
+          if (events[i].events & EPOLLRDHUP) {
+            printf("TCP closed - it's time to SEND A FIN\n");
+
+            // Fabricate a FIN
+            char ipp[1500];
+            ssize_t ipp_sz;
+            auto ret = (*fd_scan).second;
+            auto tcp_state = ret.state;
+
+            sockaddr_in addr = { 0 };
+            addr.sin_family = AF_INET;
+            addr.sin_addr.s_addr = ret.dst_ip;
+            addr.sin_port = ret.dst_port;
+
+            printf("SYN-ACK numbers %u %u\n", tcp_state->us_seq, tcp_state->them_seq + 1);
+            size_t pkt_sz = assemble_tcp_packet(ipp, 1500, tcp_state->us_seq, tcp_state->them_seq + 2, NULL, 0, &ret, &addr, false, false, true, true);
+            DROP_GUARD(pkt_sz > 0);
+            DROP_GUARD(write(loop.tunnel_fd, ipp, pkt_sz) >= 0);
+
+            // Clearup for dead session
+            stop_listen(loop.epoll_fd, events[i].data.fd);
+            close(events[i].data.fd);
+            // TODO: Remove the TCP connection from the NAT
           }
         }
       }

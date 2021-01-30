@@ -27,7 +27,7 @@ static inline void initial_listen_tcp(int epoll_fd, int fd) {
 static inline void listen_tcp(int epoll_fd, int fd) {
   struct epoll_event event = { 0 };
 
-  event.events = EPOLLIN | EPOLLHUP;
+  event.events = EPOLLIN | EPOLLRDHUP;
   event.data.fd = fd;
  
   fatal_guard(epoll_ctl(epoll_fd, EPOLL_CTL_ADD, fd, &event));
