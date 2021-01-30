@@ -82,15 +82,24 @@ struct ip_port_protocol {
 };
 
 struct tcp_state {
-  uint32_t seq;
-  uint32_t ack;
+  uint32_t them_seq;
+  uint32_t them_ack;
+
+  uint32_t us_seq;
+  uint32_t us_ack;
+
   bool connected;
 };
 
 struct msg_return {
   int fd;
+
   uint32_t src_ip;
   uint16_t src_port;
+
+  uint32_t dst_ip;
+  uint16_t dst_port;
+
   uint8_t proto;
   struct timespec last_use;
 

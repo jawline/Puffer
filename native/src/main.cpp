@@ -40,7 +40,7 @@ void process_packet_udp(event_loop_t* loop, struct ip* hdr, char* bytes, size_t 
     clock_gettime(CLOCK_MONOTONIC, &cur_time);
 
     // Register it
-    loop->udp_pairs[id] = msg_return { new_fd, hdr->saddr, udp_hdr->uh_sport, IPPROTO_UDP, cur_time, nullptr };
+    loop->udp_pairs[id] = msg_return { new_fd, hdr->saddr, udp_hdr->uh_sport, hdr->daddr, udp_hdr->uh_dport, IPPROTO_UDP, cur_time, nullptr };
     loop->udp_return[new_fd] = loop->udp_pairs[id];
     printf("RETURN: %i\n", loop->udp_return[new_fd].src_ip);
     listen_epollin(loop->epoll_fd, new_fd);
@@ -102,11 +102,13 @@ void process_packet_tcp(event_loop_t* loop, struct ip* hdr, char* bytes, size_t 
     // We next need to add our new TCP connection into the NAT
     // For TCP sessions we create a tcp_state
     struct tcp_state* state = new struct tcp_state;
-    state->seq = 0;
-    state->ack = 0;
+    state->them_seq = ntohs(tcp_hdr->seq);
+    state->them_ack = ntohs(tcp_hdr->ack_seq);
+    state->us_seq = rand();
+    state->us_ack = state->them_seq;
     state->connected = false;
 
-    loop->udp_pairs[id] = msg_return { new_fd, hdr->saddr, tcp_hdr->source, IPPROTO_TCP, cur_time, std::shared_ptr<struct tcp_state>(state) };
+    loop->udp_pairs[id] = msg_return { new_fd, hdr->saddr, tcp_hdr->source, hdr->daddr, tcp_hdr->dest, IPPROTO_TCP, cur_time, std::shared_ptr<struct tcp_state>(state) };
     loop->udp_return[new_fd] = loop->udp_pairs[id];
 
     // Now we don't actually reply to this new connection yet, just add it into the NAT
@@ -262,6 +264,21 @@ void user_space_ip_proxy(int tunnel_fd) {
           }
           if (events[i].events & EPOLLOUT) {
             printf("TCP Connected - it's TIME TO SEND A SYN-ACK\n");
+
+            char ipp[1500];
+            ssize_t ipp_sz;
+            auto ret = (*fd_scan).second;
+
+            sockaddr_in addr = { 0 };
+            addr.sin_family = AF_INET;
+            addr.sin_addr.s_addr = ret.dst_ip;
+            addr.sin_port = ret.dst_port;
+
+            size_t pkt_sz = assemble_tcp_packet(ipp, 1500, NULL, 0, &ret, &addr, true, true);
+            DROP_GUARD(pkt_sz > 0);
+            DROP_GUARD(write(loop.tunnel_fd, ipp, pkt_sz) >= 0);
+
+            // After sending a SYN-ACK 
             stop_listen(loop.epoll_fd, events[i].data.fd);
             listen_tcp(loop.epoll_fd, events[i].data.fd);
           }
