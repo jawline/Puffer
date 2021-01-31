@@ -61,4 +61,12 @@ static inline sockaddr_in lookup_dst_tcp(ip* hdr, tcphdr* tcp_hdr) {
   return dst;
 }
 
+static inline sockaddr_in generate_addr(uint32_t ip, uint16_t port) {
+  struct sockaddr_in addr = { 0 };
+  addr.sin_family = AF_INET;
+  addr.sin_addr.s_addr = ip;
+  addr.sin_port = port;
+  return addr;
+}
+
 #endif

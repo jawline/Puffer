@@ -5,19 +5,44 @@
 #include "util.h"
 #include "packet.h"
 
+void cleanup_removed_fd(event_loop_t& loop, int fd) {
+  stop_listen(loop.epoll_fd, fd);
+  fatal_guard(close(fd));
+
+  // Find and remove the outbound path NAT
+  auto oit = loop.udp_pairs.begin();
+  while (oit != loop.udp_pairs.end()) {
+    auto tgt = oit++;
+    printf("Scan: %i\n", (*tgt).second.fd);
+    if ((*tgt).second.fd == fd) {
+      printf("Found and erased from outbound\n");
+      loop.udp_pairs.erase(tgt);
+    }
+  }
+}
+
+void remove_fd_from_nat(event_loop_t& loop, int fd) {
+  auto it = loop.udp_return.find(fd);
+  if (it != loop.udp_return.end()) {
+    printf("Removing FD from NAT\n");
+    cleanup_removed_fd(loop, fd);
+    loop.udp_return.erase(it);
+  }
+}
+
 void return_a_udp_packet(char* data, size_t len, msg_return& return_addr, event_loop_t& loop, sockaddr_in& addr) {
   printf("Found a return path\n");
   char ipp[1500];
   ssize_t pkt_size;
 
-  printf("%i\n", return_addr.src_ip);
-  DROP_GUARD((pkt_size = assemble_udp_packet(ipp, 1500, data, len, &return_addr, &addr)) > 0);
+  printf("%i\n", return_addr.src.sin_addr.s_addr);
+  DROP_GUARD((pkt_size = assemble_udp_packet(ipp, 1500, data, len, return_addr.src, addr)) > 0);
 
   printf("Created a %li byte packet\n", pkt_size);
   write(loop.tunnel_fd, ipp, pkt_size);
 }
 
-void return_a_tcp_packet(char* data, size_t len, msg_return& return_addr, event_loop_t& loop, sockaddr_in& addr) {
+void return_a_tcp_packet(char* data, size_t len, const msg_return& return_addr, event_loop_t& loop, const sockaddr_in& addr) {
   printf("Found a return path\n");
   char ipp[1500];
 
@@ -25,7 +50,7 @@ void return_a_tcp_packet(char* data, size_t len, msg_return& return_addr, event_
 
   bool is_psh = data != nullptr;
 
-  size_t pkt_sz = assemble_tcp_packet(ipp, 1500, tcp_state->us_seq, tcp_state->them_seq + 1, data, len, &return_addr, &addr, is_psh, false, true, false);
+  size_t pkt_sz = assemble_tcp_packet(ipp, 1500, tcp_state->us_seq, tcp_state->them_seq + 1, data, len, return_addr.src, addr, is_psh, false, true, false, false);
 
   if (len > 0) {
     tcp_state->us_seq += len;
@@ -71,9 +96,9 @@ void process_packet_udp(event_loop_t* loop, struct ip* hdr, char* bytes, size_t 
     clock_gettime(CLOCK_MONOTONIC, &cur_time);
 
     // Register it
-    loop->udp_pairs[id] = msg_return { new_fd, hdr->saddr, udp_hdr->uh_sport, hdr->daddr, udp_hdr->uh_dport, IPPROTO_UDP, cur_time, nullptr };
+    loop->udp_pairs[id] = msg_return { new_fd, generate_addr(hdr->saddr, udp_hdr->uh_sport), generate_addr(hdr->daddr, udp_hdr->uh_dport), IPPROTO_UDP, cur_time, nullptr };
     loop->udp_return[new_fd] = loop->udp_pairs[id];
-    printf("RETURN: %i\n", loop->udp_return[new_fd].src_ip);
+    printf("RETURN: %i\n", loop->udp_return[new_fd].src.sin_addr.s_addr);
     listen_epollin(loop->epoll_fd, new_fd);
     set_nonblocking(new_fd);
 
@@ -132,15 +157,10 @@ void process_packet_tcp(event_loop_t& loop, struct ip* hdr, char* bytes, size_t 
         DROP_GUARD(send(fd, data_start, data_size, 0) >= 0);
         tcp_state->us_ack = ntohl(tcp_hdr->seq);
 
-        sockaddr_in addr = { 0 };
-        addr.sin_family = AF_INET;
-        addr.sin_addr.s_addr = ret.dst_ip;
-        addr.sin_port = ret.dst_port;
-
         // Now generate the ack
         printf("ACKIN\n");
         tcp_state->them_seq = ntohl(tcp_hdr->seq) + data_size - 1;
-        return_a_tcp_packet(nullptr, 0, ret, loop, addr);
+        return_a_tcp_packet(nullptr, 0, ret, loop, ret.dst);
       } else {
         printf("FUCKIN REPEATS %u %u\n", tcp_state->them_seq, ntohl(tcp_hdr->seq));
       }
@@ -148,17 +168,16 @@ void process_packet_tcp(event_loop_t& loop, struct ip* hdr, char* bytes, size_t 
 
     if (tcp_hdr->fin) {
       shutdown(fd, SHUT_WR);
-
       printf("ACKNOWLEDGING THE FIN\n");
-      sockaddr_in addr = { 0 };
-      addr.sin_family = AF_INET;
-      addr.sin_addr.s_addr = ret.dst_ip;
-      addr.sin_port = ret.dst_port;
+      return_a_tcp_packet(nullptr, 0, ret, loop, ret.dst);
+    }
 
-      char ipp[1500];
-      size_t pkt_sz = assemble_tcp_packet(ipp, 1500, tcp_state->us_seq, ntohl(tcp_hdr->seq) + 1, NULL, 0, &ret, &addr, false, false, true, false);
-      DROP_GUARD(pkt_sz > 0);
-      DROP_GUARD(write(loop.tunnel_fd, ipp, pkt_sz) >= 0);
+    // If we have sent a FIN then the final ACK will close the session
+    if (tcp_hdr->ack && tcp_state->closing) {
+      printf("Recv ACK on CLOSING\n");
+
+      // Clear up for dead session (This will handle removing the listener)
+      remove_fd_from_nat(loop, fd);
     }
   } else {
     // Oooh, this might be a new TCP connection. We need to figure that out (is it a SYN)
@@ -192,10 +211,11 @@ void process_packet_tcp(event_loop_t& loop, struct ip* hdr, char* bytes, size_t 
     state->us_ack = state->them_seq;
     state->sent_syn_ack = false;
     state->recv_first_ack = false;
+    state->closing = false;
 
     printf("Initial packet sequences: %u %u\n", state->them_seq, state->them_ack);
 
-    loop.udp_pairs[id] = msg_return { new_fd, hdr->saddr, tcp_hdr->source, hdr->daddr, tcp_hdr->dest, IPPROTO_TCP, cur_time, std::shared_ptr<struct tcp_state>(state) };
+    loop.udp_pairs[id] = msg_return { new_fd, generate_addr(hdr->saddr, tcp_hdr->source), generate_addr(hdr->daddr, tcp_hdr->dest), IPPROTO_TCP, cur_time, std::shared_ptr<struct tcp_state>(state) };
     loop.udp_return[new_fd] = loop.udp_pairs[id];
 
     // Now we don't actually reply to this new connection yet, just add it into the NAT
@@ -247,20 +267,8 @@ void do_nat_cleanup(event_loop_t& loop, timespec& cur_time) {
     printf("%ld\n", age);
     if (age > 30) {
       int target_fd = (*tgt).second.fd;
-      printf("Expiring a UDP session (FD %i\n)\n", target_fd);
-      stop_listen(loop.epoll_fd, target_fd);
-      fatal_guard(close(target_fd));
-
-      // Find and remove the outbound path NAT
-      auto oit = loop.udp_pairs.begin();
-      while (oit != loop.udp_pairs.end()) {
-        auto tgt = oit++;
-        printf("Scan: %i\n", (*tgt).second.fd);
-        if ((*tgt).second.fd == target_fd) {
-          printf("Found and erased from outbound\n");
-          loop.udp_pairs.erase(tgt);
-        }
-      }
+      printf("Expiring a NAT entry (FD %i\n)\n", target_fd);
+      cleanup_removed_fd(loop, target_fd);
       loop.udp_return.erase(tgt);
     }
   }
@@ -351,13 +359,10 @@ void user_space_ip_proxy(int tunnel_fd) {
             auto ret = (*fd_scan).second;
             auto tcp_state = ret.state;
 
-            sockaddr_in addr = { 0 };
-            addr.sin_family = AF_INET;
-            addr.sin_addr.s_addr = ret.dst_ip;
-            addr.sin_port = ret.dst_port;
+            sockaddr_in addr = ret.dst;
 
             printf("SYN-ACK numbers %u %u\n", tcp_state->us_seq, tcp_state->them_seq + 1);
-            size_t pkt_sz = assemble_tcp_packet(ipp, 1500, tcp_state->us_seq++, tcp_state->them_seq + 1, NULL, 0, &ret, &addr, false, true, true, false);
+            size_t pkt_sz = assemble_tcp_packet(ipp, 1500, tcp_state->us_seq++, tcp_state->them_seq + 1, NULL, 0, ret.src, addr, false, true, true, false, false);
             DROP_GUARD(pkt_sz > 0);
             DROP_GUARD(write(loop.tunnel_fd, ipp, pkt_sz) >= 0);
 
@@ -375,20 +380,17 @@ void user_space_ip_proxy(int tunnel_fd) {
             auto ret = (*fd_scan).second;
             auto tcp_state = ret.state;
 
-            sockaddr_in addr = { 0 };
-            addr.sin_family = AF_INET;
-            addr.sin_addr.s_addr = ret.dst_ip;
-            addr.sin_port = ret.dst_port;
+            if (!tcp_state->closing) {
+              printf("SYN-ACK numbers %u %u\n", tcp_state->us_seq, tcp_state->them_seq + 1);
+              size_t pkt_sz = assemble_tcp_packet(ipp, 1500, tcp_state->us_seq, tcp_state->them_seq + 1, NULL, 0, ret.src, ret.dst, false, false, true, true, false);
+              DROP_GUARD(pkt_sz > 0);
+              DROP_GUARD(write(loop.tunnel_fd, ipp, pkt_sz) >= 0);
 
-            printf("SYN-ACK numbers %u %u\n", tcp_state->us_seq, tcp_state->them_seq + 1);
-            size_t pkt_sz = assemble_tcp_packet(ipp, 1500, tcp_state->us_seq, tcp_state->them_seq + 2, NULL, 0, &ret, &addr, false, false, true, true);
-            DROP_GUARD(pkt_sz > 0);
-            DROP_GUARD(write(loop.tunnel_fd, ipp, pkt_sz) >= 0);
-
-            // Clearup for dead session
-            stop_listen(loop.epoll_fd, events[i].data.fd);
-            close(events[i].data.fd);
-            // TODO: Remove the TCP connection from the NAT
+              // On the next ACK we actually clean up since we expect an ACK before the session is fully closed
+              tcp_state->closing = true;
+            } else {
+              printf("TCP connection already closing\n");
+            }
           }
         }
       }

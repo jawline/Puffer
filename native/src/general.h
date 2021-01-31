@@ -92,16 +92,15 @@ struct tcp_state {
 
   bool sent_syn_ack;
   bool recv_first_ack;
+
+  bool closing;
 };
 
 struct msg_return {
   int fd;
 
-  uint32_t src_ip;
-  uint16_t src_port;
-
-  uint32_t dst_ip;
-  uint16_t dst_port;
+  sockaddr_in src;
+  sockaddr_in dst;;
 
   uint8_t proto;
   struct timespec last_use;
