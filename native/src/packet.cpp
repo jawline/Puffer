@@ -1,5 +1,6 @@
 #include "packet.h"
 #include "checksum.h"
+#include "log.h"
 
 void assemble_ip_header(ip* ip_hdr, uint8_t protocol, const sockaddr_in& sender, const sockaddr_in& return_addr, size_t packet_len) {
   ip_hdr->ihl = 5;
@@ -18,7 +19,9 @@ void assemble_ip_header(ip* ip_hdr, uint8_t protocol, const sockaddr_in& sender,
   // Must be zero to start
   ip_hdr->csum = 0;
   ip_hdr->csum = wrapsum(checksum((uint8_t *) ip_hdr, ip_hdr->ihl << 2, 0));
-  printf("CSUM: %x\nReturn Address: %i\nPacket Length: %i\n", ip_hdr->csum, return_addr.sin_addr.s_addr, ip_hdr->len);
+  //debug("CSUM: %x", ip_hdr->csum);
+  //debug("Return Address: %i", return_addr.sin_addr.s_addr);
+  //debug("Packet Length: %li (%i)", packet_len, ip_hdr->len);
 }
 
 void assemble_udp_header(const ip* ip, udphdr* udp, size_t datagram_contents_size, const sockaddr_in& sender, const sockaddr_in& return_addr) {
@@ -37,7 +40,7 @@ void assemble_udp_header(const ip* ip, udphdr* udp, size_t datagram_contents_siz
 
   udp->check = sum;
 
-  printf("UDP CHECK: %x\n", udp->check);
+  //debug("UDP CHECK: %x\n", udp->check);
 }
 
 uint16_t checksum(const ip* ip, uint8_t* header, size_t header_len, uint8_t* data, size_t data_len, uint8_t proto, uint32_t len) {
@@ -58,7 +61,7 @@ void assemble_tcp_header(const ip* ip, tcphdr* tcp, uint32_t seq, uint32_t ack, 
   tcp->ack_seq = htonl(ack);
   tcp->window = 65535;
 
-  printf("SEQ: %u (%u) ACK: %u (%u)\n", seq, tcp->seq, ack, tcp->ack);
+  //debug("SEQ: %u (%u) ACK: %u (%u)", seq, tcp->seq, ack, tcp->ack);
 
   if (pshf) { tcp->psh = 1; }
   if (synf) { tcp->syn = 1; }
@@ -77,7 +80,7 @@ void assemble_tcp_header(const ip* ip, tcphdr* tcp, uint32_t seq, uint32_t ack, 
 
   tcp->check = sum;
 
-  printf("TCP CHECK: %x\n", tcp->check);
+  //debug("TCP CHECK: %x", tcp->check);
 }
 
 ssize_t assemble_udp_packet(char* dst, size_t mtu, char* data, size_t len, const sockaddr_in& return_addr, const sockaddr_in& from) {
@@ -117,11 +120,6 @@ ssize_t assemble_tcp_packet(char* dst, size_t mtu, uint32_t seq, uint32_t ack, c
 
   // Copy in the data first so that checksumming works 
   memcpy(contents, data, len);
-
-  for (size_t i = 0; i < 10; i++) {
-    printf("%c ", contents[i]);
-  }
-  printf("\n");
 
   // Now make the headers and do checksums
   assemble_ip_header(ip_hdr, IPPROTO_TCP, from, return_addr, packet_size);

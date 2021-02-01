@@ -13,10 +13,15 @@ echo "Setting default route"
 #ip route add 10.0.0.1/32 via 192.168.1.203 dev wlp2s0;
 ip route add 8.8.8.8/32 via 10.0.0.1 dev ${1}
 ip route add 93.184.216.34/32 via 10.0.0.1 dev ${1}
-ip route add 151.101.129.140/32 via 10.0.0.1 dev ${1}
-ip route add 151.101.65.140/32 via 10.0.0.1 dev ${1}
-ip route add 151.101.193.140/32 via 10.0.0.1 dev ${1}
-ip route add 151.101.1.140/32 via 10.0.0.1 dev ${1}
+ip route add 184.168.131.241/32 via 10.0.0.1 dev ${1}
+ip route add 74.125.204.121/32 via 10.0.0.1 dev ${1}
+ip route add 74.125.203.121/32 via 10.0.0.1 dev ${1}
+ip route add 151.101.0.0/16 via 10.0.0.1 dev ${1}
+ip route add 142.250.0.0/16 via 10.0.0.1 dev ${1}
+#ip route add 151.101.129.140/32 via 10.0.0.1 dev ${1}
+#ip route add 151.101.65.140/32 via 10.0.0.1 dev ${1}
+#ip route add 151.101.193.140/32 via 10.0.0.1 dev ${1}
+#ip route add 151.101.1.140/32 via 10.0.0.1 dev ${1}
 #ip route add 0.0.0.0/0 via 10.0.0.1 dev ${1}
 
 #echo "Enabling IPTables Routing"

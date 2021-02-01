@@ -25,32 +25,19 @@
 #include <sys/timerfd.h>
 #include <sys/types.h>
 #include <time.h>
+#include "log.h"
+#include "block_list.h"
 
 #define MTU 1500
 #define MAX_EVENTS 500
 
 #define MAX(a, b) ((a > b) ? a : b)
 
-#define DROP_GUARD(e) if (!(e)) { \
-  printf("Dropped Packet (%i) (DROP GUARD) %i\n", e, __LINE__); \
-  perror("Reason: "); \
-  return; \
-}
-
-#define DROP_GUARD_INT(e) if (!(e)) { \
-  printf("Dropped Packet (%i) (DROP GUARD) %i\n", e, __LINE__); \
-  perror("Reason: "); \
-  return - 1; \
-}
-
-inline int fatal_guard(int r) {
-  if (r < 0) {
-    fprintf(stderr, "Guard was violated\n");
-    exit(1);
-  } else {
-    return r;
+#define fatal_guard(r) \
+  if (r < 0) { \
+    debug("Guard violated"); \
+    exit(1); \
   }
-}
 
 struct ip {
     uint8_t ihl : 4;
@@ -94,6 +81,8 @@ struct tcp_state {
   bool recv_first_ack;
 
   bool closing;
+
+  bool first_packet;
 };
 
 struct msg_return {
@@ -110,11 +99,34 @@ struct msg_return {
 };
 
 typedef struct event_loop {
+
+  event_loop(BlockList const& list): block(list) {
+    blocked = 0;
+    udp_bytes_in = 0;
+    tcp_bytes_in = 0;
+    udp_bytes_out = 0;
+    tcp_bytes_out = 0;
+    tunnel_fd = -1;
+    epoll_fd = -1;
+    timer_fd = -1;
+  }
+
+  size_t blocked;
+
+  size_t udp_bytes_in;
+  size_t tcp_bytes_in;
+
+  size_t udp_bytes_out;
+  size_t tcp_bytes_out;
+
   int tunnel_fd;
   int epoll_fd;
   int timer_fd;
+
   std::map<ip_port_protocol, msg_return> udp_pairs;
   std::map<int, msg_return> udp_return;
+
+  BlockList block;
 } event_loop_t;
 
 #endif

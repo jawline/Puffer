@@ -2,7 +2,8 @@
 #define _UTIL
 
 static inline void set_nonblocking(int fd) {
-  int flags = fatal_guard(fcntl(fd, F_GETFL));
+  int flags = fcntl(fd, F_GETFL);
+  fatal_guard(flags);
   fatal_guard(fcntl(fd, F_SETFL, flags | O_NONBLOCK));
 }
 
@@ -27,14 +28,14 @@ static inline void initial_listen_tcp(int epoll_fd, int fd) {
 static inline void listen_tcp(int epoll_fd, int fd) {
   struct epoll_event event = { 0 };
 
-  event.events = EPOLLIN | EPOLLRDHUP;
+  event.events = EPOLLIN | EPOLLHUP | EPOLLRDHUP;
   event.data.fd = fd;
  
   fatal_guard(epoll_ctl(epoll_fd, EPOLL_CTL_ADD, fd, &event));
 }
 
 static inline void stop_listen(int epoll_fd, int fd) {
-  fatal_guard(epoll_ctl(epoll_fd, EPOLL_CTL_DEL, fd, nullptr));
+  epoll_ctl(epoll_fd, EPOLL_CTL_DEL, fd, nullptr);
 }
 
 static inline void clear_timerfd(int timer_fd) {
