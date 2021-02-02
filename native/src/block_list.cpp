@@ -23,6 +23,8 @@ static inline void trim(std::string &s) {
     rtrim(s);
 }
 
+BlockList::BlockList() {}
+
 BlockList::BlockList(FILE* source) {
   std::stringstream ss;
 
@@ -46,5 +48,5 @@ BlockList::BlockList(FILE* source) {
 
 bool BlockList::block(char const* hostname) {
   // TODO: Pass this as a string and ditch the copy construct
-  return this->block_set.contains(hostname);
+  return this->block_set.find(hostname) != this->block_set.end();
 }

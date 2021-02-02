@@ -7,6 +7,7 @@ class BlockList {
 private:
   std::set<std::string> block_set;
 public:
+  BlockList();
   BlockList(FILE* source);
   bool block(char const* hostname);
 };

@@ -2,6 +2,6 @@
 #define _DEV_
 #include "general.h"
 
-void binddev(int fd);
+void binddev(event_loop_t &loop, int fd);
 
 #endif

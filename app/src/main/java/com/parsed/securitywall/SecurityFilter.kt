@@ -1,5 +1,6 @@
 package com.parsed.securitywall
 
+import android.content.res.AssetManager
 import android.os.Build
 import android.os.ParcelFileDescriptor
 import android.util.Log
@@ -12,10 +13,19 @@ class SecurityFilter(service: SecurityService): Runnable{
 
     companion object {
         const val TAG = "sec_filter"
+        init {
+            System.loadLibrary("security_wall")
+        }
     }
 
     val mService = service;
     var interfaceFileDescriptor: ParcelFileDescriptor? = null;
+
+    external fun launch(fd: Int)
+
+    public fun protect(fd: Int) {
+        mService.protect(fd);
+    }
 
     @RequiresApi(Build.VERSION_CODES.LOLLIPOP)
     override fun run() {
@@ -23,8 +33,7 @@ class SecurityFilter(service: SecurityService): Runnable{
 
         Log.i(TAG,"Starting SecurityFilter")
 
-        vpnBuilder.addDisallowedApplication("com.parsed.securitywall")
-        vpnBuilder.addAddress("10.125.0.6", 24)
+        vpnBuilder.addAddress("10.0.0.2", 24)
         vpnBuilder.addRoute("0.0.0.0", 0)
         vpnBuilder.setMtu(1500)
 
@@ -36,17 +45,7 @@ class SecurityFilter(service: SecurityService): Runnable{
 
         Log.d(TAG,"Estabished")
 
-        val tunIn = FileInputStream(interfaceFileDescriptor!!.getFileDescriptor())
-        val tunOut = FileOutputStream(interfaceFileDescriptor!!.getFileDescriptor())
-
-        val packet = ByteBuffer.allocate(1500)
-
-        while(true) {
-            val length = tunIn.read(packet.array())
-            if (length > 0) {
-                tunOut.write(packet.array(), 0, length)
-                Log.d(TAG, "Packet: " + length)
-            }
-        }
+        val tunFd = interfaceFileDescriptor!!.detachFd()
+        launch(tunFd)
     }
 }

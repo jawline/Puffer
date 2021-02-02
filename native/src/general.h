@@ -1,5 +1,10 @@
 #ifndef _GR
 #define _GR
+
+#if defined(__ANDROID__)
+#include <jni.h>
+#endif
+
 #include <memory>
 #include <stdio.h>
 #include <stdlib.h>
@@ -135,6 +140,13 @@ typedef struct event_loop {
   std::map<int, msg_return> udp_return;
 
   BlockList block;
+
+#if defined(__ANDROID__)
+  JNIEnv *env;
+  jobject swall;
+#endif
 } event_loop_t;
+
+void user_space_ip_proxy(int tunnel_fd, event_loop_t loop);
 
 #endif

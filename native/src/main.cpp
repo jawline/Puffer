@@ -6,6 +6,7 @@
 #include "packet.h"
 #include "log.h"
 #include "tls.h"
+#include <sys/timerfd.h>
 
 void cleanup_removed_fd(event_loop_t& loop, int fd) {
   stop_listen(loop.epoll_fd, fd);
@@ -101,7 +102,7 @@ void process_packet_udp(event_loop_t& loop, struct ip* hdr, char* bytes, size_t 
 
     // Create a new UDP FD
     int new_fd = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
-    binddev(new_fd);
+    binddev(loop, new_fd);
     DROP_GUARD(new_fd >= 0);
 
     // Fetch the current time
@@ -261,7 +262,7 @@ void process_packet_tcp(event_loop_t& loop, struct ip* hdr, char* bytes, size_t 
     // Create a new TCP FD
     int new_fd;
     DROP_GUARD((new_fd = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP)) >= 0);
-    binddev(new_fd);
+    binddev(loop, new_fd);
     set_nonblocking(new_fd);
     set_fast_tcp(new_fd);
     debug("New FD: %i %i", new_fd, new_fd >= 0);
@@ -369,9 +370,7 @@ void do_nat_cleanup(event_loop_t& loop, timespec& cur_time) {
   debug("STATE: UDP: %lu / %lu (%lu / %lu) bytes TCP: %lu / %lu (%lu / %lu) EXPIRED: %lu BLOCKED (THIS SESSION): %lu", udp, loop.udp_total, loop.udp_bytes_in, loop.udp_bytes_out, tcp, loop.tcp_total, loop.tcp_bytes_in, loop.tcp_bytes_out, expired, loop.blocked);
 }
 
-
-void user_space_ip_proxy(int tunnel_fd, BlockList const& list) {
-  event_loop_t loop(list);
+void user_space_ip_proxy(int tunnel_fd, event_loop_t loop) {
 
   loop.tunnel_fd = tunnel_fd;
   loop.epoll_fd = epoll_create(5);
@@ -442,6 +441,7 @@ void user_space_ip_proxy(int tunnel_fd, BlockList const& list) {
                 if (len == 0) {
                   debug("Connection gracefully closed\nTime to fab a fucking FIN");
                 } else {
+                  debug("TCP: Returning a packet");
                   return_a_tcp_packet(buf, len, ret, loop, addr);
                 }
                 break;
@@ -490,12 +490,11 @@ void user_space_ip_proxy(int tunnel_fd, BlockList const& list) {
   }
 }
 
-#include "block_list.h"
-
 int main() {
   FILE* blist = fopen("lists/base.txt", "r");
   BlockList b(blist);
+  event_loop_t loop(b);
   debug("Creating TESTTUN");
   int tunfd = tun_alloc("blaketest", IFF_TUN | IFF_NO_PI);
-  user_space_ip_proxy(tunfd, b);
+  user_space_ip_proxy(tunfd, loop);
 }
