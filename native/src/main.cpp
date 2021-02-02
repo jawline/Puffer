@@ -16,7 +16,7 @@ void cleanup_removed_fd(event_loop_t& loop, int fd) {
   while (oit != loop.udp_pairs.end()) {
     auto tgt = oit++;
     if ((*tgt).second.fd == fd) {
-      debug("Found and erased %i from outbound map", fd);
+      debug("GC: Found and erased %i from outbound map", fd);
       loop.udp_pairs.erase(tgt);
     }
   }
@@ -25,7 +25,7 @@ void cleanup_removed_fd(event_loop_t& loop, int fd) {
 void remove_fd_from_nat(event_loop_t& loop, int fd) {
   auto it = loop.udp_return.find(fd);
   if (it != loop.udp_return.end()) {
-    debug("Removing FD: %i from NAT", fd);
+    debug("GC: Removing %i from NAT", fd);
     cleanup_removed_fd(loop, fd);
     loop.udp_return.erase(it);
   }
@@ -60,8 +60,10 @@ void return_tcp_fin(const msg_return& ret, event_loop_t const& loop) {
 void return_a_tcp_packet(char* data, size_t len, const msg_return& return_addr, event_loop_t& loop, const sockaddr_in& addr) {
   auto tcp_state = return_addr.state;
 
+  bool is_psh = len > 0;
+
   char ipp[MTU];
-  size_t pkt_sz = assemble_tcp_packet(ipp, MTU, tcp_state->us_seq, tcp_state->them_seq + 1, data, len, return_addr.src, addr, false, false, true, false, false);
+  size_t pkt_sz = assemble_tcp_packet(ipp, MTU, tcp_state->us_seq, tcp_state->them_seq + 1, data, len, return_addr.src, addr, is_psh, false, true, false, false);
 
   if (len > 0) {
     tcp_state->us_seq += len;
@@ -76,10 +78,10 @@ void process_packet_icmp(struct ip* hdr, char* bytes, size_t len) {
   // TODO it is possible to manually do ICMP sockets on Android
   // int sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_ICMP);
   // Only echo requests will work
-  debug("Sorry - I cannot");
+  //debug("Sorry - I cannot");
 }
 
-void process_packet_udp(event_loop_t* loop, struct ip* hdr, char* bytes, size_t len) {
+void process_packet_udp(event_loop_t& loop, struct ip* hdr, char* bytes, size_t len) {
   DROP_GUARD(len >= sizeof(struct udphdr));
 
   struct udphdr* udp_hdr = (struct udphdr *) bytes;
@@ -87,19 +89,19 @@ void process_packet_udp(event_loop_t* loop, struct ip* hdr, char* bytes, size_t 
 
   //debug("TUN PKT: %i %i %i", hdr->daddr, udp_hdr->uh_sport, udp_hdr->uh_dport);
 
-  auto fd_scan = loop->udp_pairs.find(id);
+  auto fd_scan = loop.udp_pairs.find(id);
 
   int found_fd;
 
-  if (fd_scan != loop->udp_pairs.end()) {
+  if (fd_scan != loop.udp_pairs.end()) {
     found_fd = (*fd_scan).second.fd;
   } else {
     // No known UDP socket, open a new one
+    debug("UDP: New NAT entry");
 
     // Create a new UDP FD
     int new_fd = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
     binddev(new_fd);
-    debug("New FD: %i %i", new_fd, new_fd >= 0);
     DROP_GUARD(new_fd >= 0);
 
     // Fetch the current time
@@ -107,10 +109,11 @@ void process_packet_udp(event_loop_t* loop, struct ip* hdr, char* bytes, size_t 
     clock_gettime(CLOCK_MONOTONIC, &cur_time);
 
     // Register it
-    loop->udp_pairs[id] = msg_return { new_fd, generate_addr(hdr->saddr, udp_hdr->uh_sport), generate_addr(hdr->daddr, udp_hdr->uh_dport), IPPROTO_UDP, cur_time, nullptr };
-    loop->udp_return[new_fd] = loop->udp_pairs[id];
-    debug("RETURN: %i", loop->udp_return[new_fd].src.sin_addr.s_addr);
-    listen_epollin(loop->epoll_fd, new_fd);
+    loop.udp_total += 1;
+    loop.udp_pairs[id] = msg_return { new_fd, generate_addr(hdr->saddr, udp_hdr->uh_sport), generate_addr(hdr->daddr, udp_hdr->uh_dport), IPPROTO_UDP, cur_time, nullptr };
+    loop.udp_return[new_fd] = loop.udp_pairs[id];
+
+    listen_epollin(loop.epoll_fd, new_fd);
     set_nonblocking(new_fd);
 
     found_fd = new_fd;
@@ -120,7 +123,7 @@ void process_packet_udp(event_loop_t* loop, struct ip* hdr, char* bytes, size_t 
   bytes = bytes + sizeof(struct udphdr);
   len -= sizeof(struct udphdr);
 
-  loop->udp_bytes_out += len;
+  loop.udp_bytes_out += len;
 
   // Now proxy the UDP packet to the destination
   auto dst = lookup_dst_udp(hdr, udp_hdr);
@@ -148,21 +151,21 @@ void process_packet_tcp(event_loop_t& loop, struct ip* hdr, char* bytes, size_t 
     auto tcp_last_seq = tcp_state->them_seq;
     auto expected = tcp_state->us_ack;
 
-    debug("TCP: Packet Length %u, TCP Seq: %u, Them Seq: %u, Expected Seq: %u", ip_len, tcp_seq, tcp_last_seq, expected);
+    debug("TCP %i: Packet Length %u, TCP Seq: %u, Them Seq: %u, Expected Seq: %u", fd, ip_len, tcp_seq, tcp_last_seq, expected);
 
     if (tcp_hdr->rst) {
-      debug("TCP: Broken stream (RST). Remove from NAT");
+      debug("TCP %i: Broken stream (RST).", fd);
       remove_fd_from_nat(loop, fd);
       return;
     }
 
     if (tcp_hdr->syn) {
-      debug("TCP: Repeat SYN");
+      debug("TCP %i: Repeat SYN", fd);
       return;
     }
 
     if (!tcp_hdr->syn && tcp_hdr->ack && tcp_state->sent_syn_ack && !tcp_state->recv_first_ack) {
-      debug("TCP: Socket ready for data");
+      debug("TCP %i: Socket ready for data", fd);
       tcp_state->recv_first_ack = true;
       listen_tcp(loop.epoll_fd, fd);
     }
@@ -170,13 +173,6 @@ void process_packet_tcp(event_loop_t& loop, struct ip* hdr, char* bytes, size_t 
     // The rest of the process flow requires that we have a completed SYN-SYNACK-ACK connection sequence
     if (!tcp_state->recv_first_ack) {
       return;
-    }
-
-    // If we have sent a FIN then the final ACK will close the session
-    if (tcp_hdr->ack && tcp_state->closing) {
-      debug("Recv ACK on CLOSING");
-      // Clear up for dead session (This will handle removing the listener)
-      remove_fd_from_nat(loop, fd);
     }
 
     // Calculate how much data there is with the TCP payload
@@ -190,13 +186,13 @@ void process_packet_tcp(event_loop_t& loop, struct ip* hdr, char* bytes, size_t 
       bool is_repeat = tcp_last_seq >= tcp_seq;
   
       if (is_repeat) {
-        debug("TCP: Repeat packet");
+        debug("TCP %i: Repeat packet", fd);
         return;
       }
 
       tcp_state->them_seq += data_size;
 
-      debug("TCP: DATA: Sequence: %u (New Expected: %u) Size: %lu", tcp_seq, tcp_state->them_seq, data_size);
+      debug("TCP %i: DATA: Sequence: %u (New Expected: %u) Size: %lu", fd, tcp_seq, tcp_state->them_seq, data_size);
 
       if (tcp_state->first_packet) {
 
@@ -232,10 +228,23 @@ void process_packet_tcp(event_loop_t& loop, struct ip* hdr, char* bytes, size_t 
     if (tcp_hdr->fin) {
       tcp_state->them_seq += 1;
       shutdown(fd, SHUT_WR);
-      debug("ACKNOWLEDGING THE FIN");
+      debug("TCP %i: Client has shutdown write half of stream", fd);
+      tcp_state->close_wr = true;
 
       // SYN and FIN increment the sequence number by one 
       return_a_tcp_packet(nullptr, 0, ret, loop, ret.dst);
+    }
+
+    // If we have sent a FIN then the final ACK will close the session
+    if (tcp_hdr->ack && tcp_state->close_rd) {
+      debug("TCP %i: Stream has acknowledged FIN", fd);
+    } 
+
+    // Both sides are closed
+    if (tcp_state->close_wr && tcp_state->ack_rd && tcp_state->close_rd) {
+      debug("TCP %i: Both sides of the connection have closed and acknowledged", fd);
+      // Clear up for dead session (This will handle removing the listener)
+      remove_fd_from_nat(loop, fd);
     }
   } else {
     // Oooh, this might be a new TCP connection. We need to figure that out (is it a SYN)
@@ -254,6 +263,7 @@ void process_packet_tcp(event_loop_t& loop, struct ip* hdr, char* bytes, size_t 
     DROP_GUARD((new_fd = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP)) >= 0);
     binddev(new_fd);
     set_nonblocking(new_fd);
+    set_fast_tcp(new_fd);
     debug("New FD: %i %i", new_fd, new_fd >= 0);
     DROP_GUARD(new_fd >= 0);
 
@@ -274,11 +284,13 @@ void process_packet_tcp(event_loop_t& loop, struct ip* hdr, char* bytes, size_t 
     state->us_ack = state->them_seq;
     state->sent_syn_ack = false;
     state->recv_first_ack = false;
-    state->closing = false;
+    state->close_wr = false;
+    state->close_rd = false;
+    state->ack_rd = false;
     state->first_packet = true;
 
-    debug("New TCP stream!");
-    debug("Initial packet sequences: %u %u", state->them_seq, state->them_ack);
+    debug("TCP: New Stream. Initial packet sequences: %u %u", state->them_seq, state->them_ack);
+    loop.tcp_total += 1;
 
     loop.udp_pairs[id] = msg_return { new_fd, generate_addr(hdr->saddr, tcp_hdr->source), generate_addr(hdr->daddr, tcp_hdr->dest), IPPROTO_TCP, cur_time, std::shared_ptr<struct tcp_state>(state) };
     loop.udp_return[new_fd] = loop.udp_pairs[id];
@@ -296,6 +308,9 @@ void process_tun_packet(event_loop_t& loop, char bytes[MTU], size_t len) {
   DROP_GUARD(len >= sizeof(struct ip));
   struct ip* hdr = (struct ip*) bytes;
 
+  const uint32_t my_addr = inet_addr("10.0.0.2");
+  DROP_GUARD(hdr->saddr == my_addr);
+
   // TODO: Add IPv6 later once we get this IPv4 thing worked out
   //debug("IP HDR Version: %i %i", hdr->version, hdr->ihl);
   DROP_GUARD(hdr->version == 4);
@@ -309,7 +324,7 @@ void process_tun_packet(event_loop_t& loop, char bytes[MTU], size_t len) {
       break;
     }
     case IPPROTO_UDP: {
-      process_packet_udp(&loop, hdr, rest, len);
+      process_packet_udp(loop, hdr, rest, len);
       break;
     }
     case IPPROTO_TCP: {
@@ -340,7 +355,6 @@ void do_nat_cleanup(event_loop_t& loop, timespec& cur_time) {
       udp += 1;
 
       uint64_t age = cur_time.tv_sec - (*tgt).second.last_use.tv_sec;
-      debug("%ld", age);
 
       // UDP sessions don't die, we just evict the NAT mapping after 30s
       if (age > 30) {
@@ -352,7 +366,7 @@ void do_nat_cleanup(event_loop_t& loop, timespec& cur_time) {
     }
   }
 
-  debug("STATE: UDP: %lu TCP: %lu EXPIRED: %lu BLOCKED (THIS SESSION): %lu\n", udp, tcp, expired, loop.blocked);
+  debug("STATE: UDP: %lu / %lu (%lu / %lu) bytes TCP: %lu / %lu (%lu / %lu) EXPIRED: %lu BLOCKED (THIS SESSION): %lu", udp, loop.udp_total, loop.udp_bytes_in, loop.udp_bytes_out, tcp, loop.tcp_total, loop.tcp_bytes_in, loop.tcp_bytes_out, expired, loop.blocked);
 }
 
 
@@ -384,6 +398,7 @@ void user_space_ip_proxy(int tunnel_fd, BlockList const& list) {
   debug("Setup epoll listeners");
 
   struct timespec cur_time;
+  struct timespec fin_time;
 
   while(true) { 
     ssize_t event_count = epoll_wait(loop.epoll_fd, events, MAX_EVENTS, -1);
@@ -391,8 +406,8 @@ void user_space_ip_proxy(int tunnel_fd, BlockList const& list) {
     for(size_t i = 0; i < event_count; i++) {
       if (events[i].data.fd == tunnel_fd) {
         char bytes[MTU] = { 0 };
-        ssize_t readb = read(tunnel_fd, bytes, MTU);
-        if (readb > 0) {
+        ssize_t readb;
+        while ((readb = read(tunnel_fd, bytes, MTU)) > 0) {
           process_tun_packet(loop, bytes, readb);
         }
       } else if (events[i].data.fd == loop.timer_fd) {
@@ -402,13 +417,13 @@ void user_space_ip_proxy(int tunnel_fd, BlockList const& list) {
         auto fd_scan = loop.udp_return.find(events[i].data.fd);
         if (fd_scan != loop.udp_return.end()) {
           if (events[i].events & EPOLLIN) {
-          debug("FD: %i read", events[i].data.fd);
           char buf[65536];
           sockaddr_in addr;
           socklen_t addr_len = sizeof(addr);
           ssize_t len = recvfrom(events[i].data.fd, buf, 1350, 0, (sockaddr *) &addr, &addr_len);
 
           if (len < 0) {
+            debug("zero read error");
             continue;
           }
 
@@ -460,22 +475,18 @@ void user_space_ip_proxy(int tunnel_fd, BlockList const& list) {
             auto ret = (*fd_scan).second;
             auto tcp_state = ret.state;
 
-            if (!tcp_state->closing) {
-              debug("SYN-ACK numbers %u %u", tcp_state->us_seq, tcp_state->them_seq + 1);
-              size_t pkt_sz = assemble_tcp_packet(ipp, 1500, tcp_state->us_seq++, tcp_state->them_seq + 1, NULL, 0, ret.src, ret.dst, false, false, true, true, false);
-              DROP_GUARD(pkt_sz > 0);
-              DROP_GUARD(write(loop.tunnel_fd, ipp, pkt_sz) >= 0);
+            debug("TCP %i: Upstream closed. Generating FIN with SYN-ACK numbers %u %u", events[i].data.fd, tcp_state->us_seq, tcp_state->them_seq + 1);
+            return_tcp_fin(ret, loop);
 
-              // On the next ACK we actually clean up since we expect an ACK before the session is fully closed
-              tcp_state->closing = true;
-            } else {
-              debug("TCP connection already closing");
-              stop_listen(loop.epoll_fd, events[i].data.fd);
-            }
+            // On the next ACK we actually clean up since we expect an ACK before the session is fully closed
+            tcp_state->close_rd = true;
+            stop_listen(loop.epoll_fd, events[i].data.fd); 
           }
         }
       }
     }
+    clock_gettime(CLOCK_MONOTONIC, &fin_time);
+    debug("FRAME: Took %lus", fin_time.tv_sec - cur_time.tv_sec);
   }
 }
 

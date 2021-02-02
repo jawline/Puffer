@@ -7,6 +7,12 @@ static inline void set_nonblocking(int fd) {
   fatal_guard(fcntl(fd, F_SETFL, flags | O_NONBLOCK));
 }
 
+static inline void set_fast_tcp(int fd) {
+  const int yes = 1;
+  setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, (void *)&yes, sizeof(yes));
+  setsockopt(fd, IPPROTO_TCP, TCP_QUICKACK, (void *)&yes, sizeof(yes));
+}
+
 static inline void listen_epollin(int epoll_fd, int fd) {
   struct epoll_event event = { 0 };
 

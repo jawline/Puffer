@@ -1,6 +1,7 @@
 #ifndef _BLOCK_LIST
 #define _BLOCK_LIST
 #include <set>
+#include <string>
 
 class BlockList {
 private:

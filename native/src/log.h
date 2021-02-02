@@ -10,12 +10,12 @@
                                 __LINE__, __func__, ## __VA_ARGS__); } while (0)
 
 #define DROP_GUARD(e) if (!(e)) { \
-  debug("Dropped Packet (%i) (DROP GUARD) %i\n", e, __LINE__); \
+  debug("Dropped Packet (%i) (DROP GUARD) %i", e, __LINE__); \
   return; \
 }
 
 #define DROP_GUARD_INT(e) if (!(e)) { \
-  debug("Dropped Packet (%i) (DROP GUARD) %i\n", e, __LINE__); \
+  debug("Dropped Packet (%i) (DROP GUARD) %i", e, __LINE__); \
   return - 1; \
 }
 

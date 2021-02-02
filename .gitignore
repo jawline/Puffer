@@ -14,3 +14,7 @@
 .cxx
 local.properties
 a.out
+native/cmake_install.cmake
+native/CMakeCache.txt
+native/CMakeFiles
+libsecurity_wall.a

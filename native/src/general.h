@@ -80,7 +80,10 @@ struct tcp_state {
   bool sent_syn_ack;
   bool recv_first_ack;
 
-  bool closing;
+  bool close_wr;
+
+  bool close_rd;
+  bool ack_rd;
 
   bool first_packet;
 };
@@ -89,7 +92,7 @@ struct msg_return {
   int fd;
 
   sockaddr_in src;
-  sockaddr_in dst;;
+  sockaddr_in dst;
 
   uint8_t proto;
   struct timespec last_use;
@@ -102,6 +105,8 @@ typedef struct event_loop {
 
   event_loop(BlockList const& list): block(list) {
     blocked = 0;
+    udp_total = 0;
+    tcp_total = 0;
     udp_bytes_in = 0;
     tcp_bytes_in = 0;
     udp_bytes_out = 0;
@@ -112,6 +117,9 @@ typedef struct event_loop {
   }
 
   size_t blocked;
+
+  size_t udp_total;
+  size_t tcp_total;
 
   size_t udp_bytes_in;
   size_t tcp_bytes_in;

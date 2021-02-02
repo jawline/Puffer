@@ -22,6 +22,10 @@
 127.0.0.1  localhost
 ::1  localhost
 
+127.0.0.1 server.cpmstar.com
+127.0.0.1 ssl.cdne.cpmstar.com
+127.0.0.1 cdn.adskeeper.com
+127.0.0.1 www.adskeeper.com
 # 127.0.0.1 www.parsed.uk
 
 # [163.com]
