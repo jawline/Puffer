@@ -8,7 +8,7 @@ project(security_wall)
 file(GLOB SOURCES "src/*.cpp")
 
 add_executable(testMode ${SOURCES})
-add_library(security_wall ${SOURCES})
+add_library(security_wall SHARED ${SOURCES})
 
 set_property(TARGET testMode PROPERTY CXX_STANDARD 20)
 set_property(TARGET security_wall PROPERTY CXX_STANDARD 20)

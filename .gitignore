@@ -17,4 +17,7 @@ a.out
 native/cmake_install.cmake
 native/CMakeCache.txt
 native/CMakeFiles
+native/Makefile
 libsecurity_wall.a
+libsecurity_wall.so
+testMode
