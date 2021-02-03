@@ -134,6 +134,7 @@ typedef struct event_loop {
 
   int tunnel_fd;
   int epoll_fd;
+  int quit_fd;
   int timer_fd;
 
   std::map<ip_port_protocol, msg_return> udp_pairs;

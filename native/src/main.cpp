@@ -7,6 +7,7 @@
 #include "log.h"
 #include "tls.h"
 #include <sys/timerfd.h>
+#include <arpa/inet.h>
 
 void cleanup_removed_fd(event_loop_t& loop, int fd) {
   stop_listen(loop.epoll_fd, fd);
@@ -17,7 +18,7 @@ void cleanup_removed_fd(event_loop_t& loop, int fd) {
   while (oit != loop.udp_pairs.end()) {
     auto tgt = oit++;
     if ((*tgt).second.fd == fd) {
-      debug("GC: Found and erased %i from outbound map", fd);
+      //debug("GC: Found and erased %i from outbound map", fd);
       loop.udp_pairs.erase(tgt);
     }
   }
@@ -61,10 +62,11 @@ void return_tcp_fin(const msg_return& ret, event_loop_t const& loop) {
 void return_a_tcp_packet(char* data, size_t len, const msg_return& return_addr, event_loop_t& loop, const sockaddr_in& addr) {
   auto tcp_state = return_addr.state;
 
-  bool is_psh = len > 0;
+  debug("Source: %s %i", inet_ntoa(in_addr { addr.sin_addr.s_addr }), addr.sin_port);
+  debug("Dest: %s %i", inet_ntoa(in_addr { return_addr.src.sin_addr.s_addr }), return_addr.src.sin_port);
 
   char ipp[MTU];
-  size_t pkt_sz = assemble_tcp_packet(ipp, MTU, tcp_state->us_seq, tcp_state->them_seq + 1, data, len, return_addr.src, addr, is_psh, false, true, false, false);
+  size_t pkt_sz = assemble_tcp_packet(ipp, MTU, tcp_state->us_seq, tcp_state->them_seq + 1, data, len, return_addr.src, return_addr.dst, false, false, true, false, false);
 
   if (len > 0) {
     tcp_state->us_seq += len;
@@ -140,6 +142,9 @@ void process_packet_tcp(event_loop_t& loop, struct ip* hdr, char* bytes, size_t 
   struct tcphdr* tcp_hdr = (struct tcphdr *) bytes;
   struct ip_port_protocol id = ip_port_protocol { hdr->daddr, tcp_hdr->source, tcp_hdr->dest, IPPROTO_TCP };
 
+  debug("Source: %s %i", inet_ntoa(in_addr { hdr->saddr }), tcp_hdr->source);
+  debug("Dest: %s %i", inet_ntoa(in_addr { hdr->daddr }), tcp_hdr->dest);
+
   auto fd_scan = loop.udp_pairs.find(id);
   int found_fd;
 
@@ -179,6 +184,7 @@ void process_packet_tcp(event_loop_t& loop, struct ip* hdr, char* bytes, size_t 
     // Calculate how much data there is with the TCP payload
     char* data_start = bytes + (tcp_hdr->doff << 2);
     size_t data_size = ntohs(hdr->len) - sizeof(ip) - (tcp_hdr->doff << 2);
+    bool should_ack = false;
 
     // If there is data then process and acknowledge it
     if (data_size > 0) {
@@ -222,8 +228,7 @@ void process_packet_tcp(event_loop_t& loop, struct ip* hdr, char* bytes, size_t 
       // Send this on to the target
       DROP_GUARD(send(fd, data_start, data_size, MSG_NOSIGNAL) >= 0);
 
-      // Acknowledge the receipt by transmitting back a packet with 0 data but the ACK field set
-      return_a_tcp_packet(nullptr, 0, ret, loop, ret.dst);
+      should_ack = true;
     }
 
     if (tcp_hdr->fin) {
@@ -231,21 +236,24 @@ void process_packet_tcp(event_loop_t& loop, struct ip* hdr, char* bytes, size_t 
       shutdown(fd, SHUT_WR);
       debug("TCP %i: Client has shutdown write half of stream", fd);
       tcp_state->close_wr = true;
-
-      // SYN and FIN increment the sequence number by one 
-      return_a_tcp_packet(nullptr, 0, ret, loop, ret.dst);
+      should_ack = true;
     }
 
     // If we have sent a FIN then the final ACK will close the session
     if (tcp_hdr->ack && tcp_state->close_rd) {
       debug("TCP %i: Stream has acknowledged FIN", fd);
-    } 
+    }
 
     // Both sides are closed
     if (tcp_state->close_wr && tcp_state->ack_rd && tcp_state->close_rd) {
       debug("TCP %i: Both sides of the connection have closed and acknowledged", fd);
       // Clear up for dead session (This will handle removing the listener)
       remove_fd_from_nat(loop, fd);
+    }
+
+    if (should_ack) {
+      // Acknowledge the receipt by transmitting back a packet with 0 data but the ACK field set
+      return_a_tcp_packet(nullptr, 0, ret, loop, ret.dst);
     }
   } else {
     // Oooh, this might be a new TCP connection. We need to figure that out (is it a SYN)
@@ -293,7 +301,13 @@ void process_packet_tcp(event_loop_t& loop, struct ip* hdr, char* bytes, size_t 
     debug("TCP: New Stream. Initial packet sequences: %u %u", state->them_seq, state->them_ack);
     loop.tcp_total += 1;
 
-    loop.udp_pairs[id] = msg_return { new_fd, generate_addr(hdr->saddr, tcp_hdr->source), generate_addr(hdr->daddr, tcp_hdr->dest), IPPROTO_TCP, cur_time, std::shared_ptr<struct tcp_state>(state) };
+    auto saddr = generate_addr(hdr->saddr, tcp_hdr->source);
+    auto daddr = generate_addr(hdr->daddr, tcp_hdr->dest);
+
+    debug("Source: %s %i", inet_ntoa(in_addr { saddr.sin_addr.s_addr }), saddr.sin_port);
+    debug("Dest: %s %i", inet_ntoa(in_addr { daddr.sin_addr.s_addr }), daddr.sin_port);
+
+    loop.udp_pairs[id] = msg_return { new_fd, saddr, daddr, IPPROTO_TCP, cur_time, std::shared_ptr<struct tcp_state>(state) };
     loop.udp_return[new_fd] = loop.udp_pairs[id];
 
     // Now we don't actually reply to this new connection yet, just add it into the NAT
@@ -309,11 +323,12 @@ void process_tun_packet(event_loop_t& loop, char bytes[MTU], size_t len) {
   DROP_GUARD(len >= sizeof(struct ip));
   struct ip* hdr = (struct ip*) bytes;
 
-  const uint32_t my_addr = inet_addr("10.0.0.2");
-  DROP_GUARD(hdr->saddr == my_addr);
+  //const uint32_t my_addr = inet_addr("10.0.0.2");
+  //hdr->saddr = my_addr;
+  //DROP_GUARD(hdr->saddr == my_addr);
 
   // TODO: Add IPv6 later once we get this IPv4 thing worked out
-  //debug("IP HDR Version: %i %i", hdr->version, hdr->ihl);
+  debug("IP HDR Version: %i %i", hdr->version, hdr->ihl);
   DROP_GUARD(hdr->version == 4);
 
   char* rest = bytes + sizeof(struct ip);
@@ -393,6 +408,7 @@ void user_space_ip_proxy(int tunnel_fd, event_loop_t loop) {
 
   debug("Preparing epoll listeners");
   listen_epollin(loop.epoll_fd, tunnel_fd);
+  listen_epollin(loop.epoll_fd, loop.quit_fd);
   listen_epollin(loop.epoll_fd, loop.timer_fd);
   debug("Setup epoll listeners");
 
@@ -409,6 +425,9 @@ void user_space_ip_proxy(int tunnel_fd, event_loop_t loop) {
         while ((readb = read(tunnel_fd, bytes, MTU)) > 0) {
           process_tun_packet(loop, bytes, readb);
         }
+      } else if (events[i].data.fd == loop.quit_fd) {
+        debug("TODO: Appropriately tear it all down. Kill everything. Cleanup.");
+        return;
       } else if (events[i].data.fd == loop.timer_fd) {
         clear_timerfd(events[i].data.fd);
         do_nat_cleanup(loop, cur_time);
@@ -426,7 +445,7 @@ void user_space_ip_proxy(int tunnel_fd, event_loop_t loop) {
             continue;
           }
 
-          debug("Read from %i %i a %li byte response", addr.sin_addr.s_addr, addr.sin_port, len);
+          debug("READ: %i SZ: %z", events[i].data.fd, len);
             auto proto = (*fd_scan).second.proto;
             (*fd_scan).second.last_use = cur_time;
             auto ret = (*fd_scan).second;
@@ -439,7 +458,7 @@ void user_space_ip_proxy(int tunnel_fd, event_loop_t loop) {
               case IPPROTO_TCP:
                 //debug("WE GOT A TCP PACKET TO RETURN. FABRICATE A PSH %li", len);
                 if (len == 0) {
-                  debug("Connection gracefully closed\nTime to fab a fucking FIN");
+                  debug("Connection gracefully closed");
                 } else {
                   debug("TCP: Returning a packet");
                   return_a_tcp_packet(buf, len, ret, loop, addr);
@@ -486,14 +505,17 @@ void user_space_ip_proxy(int tunnel_fd, event_loop_t loop) {
       }
     }
     clock_gettime(CLOCK_MONOTONIC, &fin_time);
-    debug("FRAME: Took %lus", fin_time.tv_sec - cur_time.tv_sec);
   }
 }
 
 int main() {
+  int fds[2];
+  fatal_guard(pipe(fds));
+
   FILE* blist = fopen("lists/base.txt", "r");
   BlockList b(blist);
   event_loop_t loop(b);
+  loop.quit_fd = fds[0];
   debug("Creating TESTTUN");
   int tunfd = tun_alloc("blaketest", IFF_TUN | IFF_NO_PI);
   user_space_ip_proxy(tunfd, loop);
