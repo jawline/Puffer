@@ -1,71 +1,61 @@
 package com.parsed.securitywall
 
 import android.app.*
-import android.content.Context
 import android.content.Intent
 import android.net.VpnService
 import android.os.*
 import android.util.Log
 import androidx.annotation.RequiresApi
-import androidx.core.app.NotificationCompat
 import androidx.databinding.ObservableBoolean
 import com.viliussutkus89.android.tmpfile.Tmpfile
-import java.io.BufferedReader
-import java.io.IOException
-import java.io.InputStream
-import java.io.InputStreamReader
+import java.io.*
 
 class SecurityService : VpnService(), Handler.Callback {
-    private var mHandler: Handler? = null
-    private var mConfigureIntent: PendingIntent? = null
-    private var mFilterThread: Thread? = null
     private var mSecurityFilter: SecurityFilter? = null
-    private var mNotificationManager: NotificationManager? = null
+    private var mStatistics: SecurityStatistics? = null
 
-    // This is the object that receives interactions from clients.
     private val mBinder: IBinder = LocalBinder()
-
     inner class LocalBinder : Binder() {
         val service: SecurityService
         get() = this@SecurityService
     }
 
+    private fun statsFile() = File(this.cacheDir.absolutePath + ".stats")
+    private fun notificationManager() = getSystemService(
+            android.content.Context.NOTIFICATION_SERVICE
+        ) as android.app.NotificationManager
+
     override fun onCreate() {
-        Tmpfile.init(getApplicationContext().getCacheDir());
-        if (mHandler == null) {
-            mHandler = Handler(this)
-        }
-        mConfigureIntent = PendingIntent.getActivity(
-            this, 0, Intent(this, SecurityWall::class.java),
-            PendingIntent.FLAG_UPDATE_CURRENT
+        Tmpfile.init(applicationContext.cacheDir)
+        mStatistics = SecurityStatistics.load(statsFile())
+        notificationManager().createNotificationChannel(
+            NotificationChannel(
+                NOTIFICATION_CHANNEL_ID, NOTIFICATION_CHANNEL_ID,
+                NotificationManager.IMPORTANCE_MIN
+            )
         )
-        mNotificationManager = getSystemService(
-                android.content.Context.NOTIFICATION_SERVICE
-                ) as android.app.NotificationManager
         Log.d(TAG, "Service Created")
     }
 
-    fun connect() {
+    private fun connect() {
         Log.d(TAG, "Starting SecurityFilter thread")
-        mSecurityFilter = readRawTextFile(this, R.raw.base)?.let { SecurityFilter(this, it) }
-        mFilterThread = Thread(mSecurityFilter, "SecurityFilter")
-        mFilterThread!!.start()
+        mSecurityFilter = Util.readRawTextFile(this, R.raw.base)?.let { SecurityFilter(this, it) }
+        mSecurityFilter!!.start()
         running.set(true)
+        BootService.autostartOnBoot(this)
     }
 
-    fun disconnect() {
+    private fun disconnect() {
         Log.d(TAG, "Stopping SecurityFilter thread")
-        if (mFilterThread != null) {
-            Log.d(TAG, "Really stopping the thread");
+        if (mSecurityFilter != null) {
+            Log.d(TAG, "Really stopping the thread")
             mSecurityFilter?.interrupt()
-            mFilterThread!!.interrupt()
-            while (mFilterThread?.isAlive() == true) {
+            while (mSecurityFilter?.isAlive == true) {
                 Log.d(TAG, "Not finished yet")
             }
-            mFilterThread = null
             mSecurityFilter = null
             running.set(false)
-            Log.d(TAG, "Done");
+            Log.d(TAG, "Done")
         }
     }
 
@@ -75,6 +65,7 @@ class SecurityService : VpnService(), Handler.Callback {
     override fun onStartCommand(intent: Intent, flags: Int, startId: Int): Int {
         Log.d(TAG, "onStart")
         return if (ACTION_STOP == intent.action) {
+            BootService.cancelOnBoot(this)
             disconnect()
             clearNotification()
             stopForeground(true)
@@ -83,7 +74,7 @@ class SecurityService : VpnService(), Handler.Callback {
         } else {
             Log.d(TAG, "connecting")
             connect()
-            updateForegroundNotification(0,0,0)
+            updateForegroundNotification(0)
             Service.START_STICKY
         }
     }
@@ -98,64 +89,59 @@ class SecurityService : VpnService(), Handler.Callback {
 
     override fun onDestroy() {
         clearNotification()
-        disconnect()
     }
 
-    var first = true;
+    fun report(currentTcp: Int, currentUdp: Int, newTcp: Int, newUdp: Int, newBytesIn: Int, newBytesOut: Int, newBlocked: Int) {
+        mStatistics!!.totalTcp += newTcp
+        mStatistics!!.totalUdp += newUdp
+        mStatistics!!.totalBytesIn += newBytesIn
+        mStatistics!!.totalBytesOut += newBytesOut
+        mStatistics!!.trackersBlocked += newBlocked
+        mStatistics!!.save(statsFile())
 
-    fun clearNotification() {
-        mNotificationManager!!.cancel(1)
+        Handler(Looper.getMainLooper()).postDelayed({
+            running.notifyChange()
+            updateForegroundNotification(currentTcp + currentUdp)
+        }, 50)
     }
 
-    public fun updateForegroundNotification(total_current: Int, total_session: Int, blocked_count: Int) {
-        val NOTIFICATION_CHANNEL_ID = "SecurityWall"
+    fun sessionBlocked() = if (mSecurityFilter != null) mSecurityFilter!!.lastBlocked else 0
+    fun sessionConnections() = if (mSecurityFilter != null) mSecurityFilter!!.lastTcp + mSecurityFilter!!.lastUdp else 0
+    fun sessionBytes() = if (mSecurityFilter != null) mSecurityFilter!!.lastBytesIn + mSecurityFilter!!.lastBytesOut else 0
 
-        if (first) {
-            mNotificationManager!!.createNotificationChannel(
-                NotificationChannel(
-                    NOTIFICATION_CHANNEL_ID, NOTIFICATION_CHANNEL_ID,
-                    NotificationManager.IMPORTANCE_MIN
-                )
-            )
-            first = false
-        }
+    fun totalBlocked() = if (mStatistics != null) mStatistics!!.trackersBlocked else 0
+    fun totalConnections() = if (mStatistics != null) mStatistics!!.totalTcp + mStatistics!!.totalUdp else 0
+    fun totalBytes() = if (mStatistics != null) mStatistics!!.totalBytesIn + mStatistics!!.totalBytesOut else 0
 
+    private fun clearNotification() = notificationManager().cancel(1)
+    private fun updateForegroundNotification(current: Int) {
         val pending = Intent(this, SecurityService::class.java).setAction(ACTION_STOP)
-        var action = Notification.Action.Builder(R.drawable.ic_lock_open, getString(R.string.switch_off), PendingIntent.getService(this, 0, pending, 0)).build()
-
-        var bigTextStyle = Notification.BigTextStyle().bigText(getString(R.string.monitored) + " " + total_current +"\n" + getString(R.string.life_monitored) + " " + total_session)
+        var action = Notification.Action.Builder(
+            R.drawable.ic_lock_open,
+            getString(R.string.switch_off),
+            PendingIntent.getService(this, 0, pending, 0)
+        ).build()
+        var bigTextStyle = Notification.BigTextStyle().bigText(
+            getString(R.string.life_blocked_trackers) + " " + mStatistics!!.trackersBlocked + "\n" + getString(
+                R.string.monitored
+            ) + " " + current + "\n" + getString(R.string.life_monitored) + " " + mStatistics!!.totalConnections()
+        )
 
         val notification = Notification.Builder(this, NOTIFICATION_CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_launcher_foreground)
             .setStyle(bigTextStyle)
-            .setContentTitle(getString(R.string.blocked_trackers) + " " + blocked_count)
+            .setContentTitle(getString(R.string.blocked_trackers) + " " + sessionBlocked())
             .addAction(action)
             .setOngoing(true)
             .build()
 
-        mNotificationManager!!.notify(1, notification)
-    }
-
-    fun readRawTextFile(ctx: Context, resId: Int): String? {
-        val inputStream: InputStream = ctx.resources.openRawResource(resId)
-        val inputreader = InputStreamReader(inputStream)
-        val buffreader = BufferedReader(inputreader)
-        var line: String? = null
-        val text = StringBuilder()
-        try {
-            while (buffreader.readLine().also({ line = it }) != null) {
-                text.append(line)
-                text.append('\n')
-            }
-        } catch (e: IOException) {
-            return null
-        }
-        return text.toString()
+        notificationManager().notify(1, notification)
     }
 
     companion object {
         const val TAG = "SecurityService"
         const val ACTION_START = "com.parsed.securitywall.START"
         const val ACTION_STOP = "com.parsed.securitywall.STOP"
+        const val NOTIFICATION_CHANNEL_ID = "SecurityWall"
     }
 }

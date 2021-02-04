@@ -137,7 +137,6 @@ void process_packet_udp(event_loop_t& loop, struct ip* hdr, char* bytes, size_t 
 }
 
 void process_packet_tcp(event_loop_t& loop, struct ip* hdr, char* bytes, size_t len) {
-
   DROP_GUARD(len >= sizeof(struct tcphdr));
   struct tcphdr* tcp_hdr = (struct tcphdr *) bytes;
   struct ip_port_protocol id = ip_port_protocol { hdr->daddr, tcp_hdr->source, tcp_hdr->dest, IPPROTO_TCP };
@@ -445,7 +444,7 @@ void user_space_ip_proxy(int tunnel_fd, event_loop_t loop) {
             continue;
           }
 
-          debug("READ: %i SZ: %z", events[i].data.fd, len);
+          debug("READ: %i SZ: %lu", events[i].data.fd, len);
             auto proto = (*fd_scan).second.proto;
             (*fd_scan).second.last_use = cur_time;
             auto ret = (*fd_scan).second;

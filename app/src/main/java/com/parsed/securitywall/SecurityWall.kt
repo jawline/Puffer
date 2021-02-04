@@ -12,6 +12,7 @@ import android.util.Log
 import android.view.View
 import android.widget.ImageView
 import android.widget.Switch
+import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
 import androidx.databinding.Observable
 import androidx.databinding.Observable.OnPropertyChangedCallback
@@ -24,89 +25,110 @@ class SecurityWall : AppCompatActivity() {
         try {
             this.supportActionBar!!.hide()
         } catch (e: NullPointerException) {}
-        setContentView(R.layout.activity_main)
 
-        doBindService()
+        setContentView(R.layout.activity_main)
 
         val intent = VpnService.prepare(this@SecurityWall)
         if (intent != null) {
             startActivityForResult(intent, 0)
         } else {
-            onActivityResult(0, Activity.RESULT_CANCELED, null)
+            onActivityResult(0, Activity.RESULT_OK, null)
         }
     }
 
-    override fun onActivityResult(request: Int, result: Int, data: Intent?) {
-        super.onActivityResult(request, result, data)
-    }
-
-    private fun getServiceIntent(): Intent {
-        return Intent(this, SecurityService::class.java)
+    // If the user does not consent then close the application
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (resultCode != Activity.RESULT_OK) {
+            finish()
+            return;
+        }
+        bindSecurityService()
     }
 
     fun toggleProtection(toggleSwitch: View) {
         val toggleSwitch: Switch = toggleSwitch as Switch
-        val statusView = this.findViewById<ImageView>(R.id.image_status);
-
-        Log.d(TAG, "Toggling");
-        if (toggleSwitch.isChecked()) {
-            startService(getServiceIntent().setAction(SecurityService.ACTION_START))
-            statusView.setImageResource(R.drawable.ic_lock);
-        } else {
-            startService(getServiceIntent().setAction(SecurityService.ACTION_STOP))
-            statusView.setImageResource(R.drawable.ic_lock_open);
+        Log.d(TAG, "Toggling")
+        if (toggleSwitch.isChecked) {
+            BootService.startSecurityService(this) }
+        else {
+            BootService.stopSecurityService(this)
         }
     }
 
-    private var mBoundService: SecurityService? = null
+    private var mSecurityService: SecurityService? = null
 
     fun updateToggle() {
-        val toggleSwitch = findViewById<Switch>(R.id.enable_switch);
-        toggleSwitch.isChecked = mBoundService!!.running.get();
-    }
+        val statusText = this.findViewById<TextView>(R.id.status_text)
+        val statusView = this.findViewById<ImageView>(R.id.status_image)
+        val toggleSwitch = findViewById<Switch>(R.id.status_toggle)
+        val isChecked = mSecurityService!!.running.get()
+        toggleSwitch.isChecked = isChecked
+        toggleSwitch.isEnabled = true
 
-    private var watcher = object: OnPropertyChangedCallback() {
-        override fun onPropertyChanged(sender: Observable?, propertyId: Int) {
-            updateToggle()
+        if (isChecked) {
+            statusText.setText(R.string.user_protected)
+            statusView.setImageResource(R.drawable.ic_lock)
+        } else {
+            statusText.setText(R.string.user_unprotected)
+            statusView.setImageResource(R.drawable.ic_lock_open)
         }
     }
 
-    private val mConnection: ServiceConnection = object : ServiceConnection {
-        override fun onServiceConnected(className: ComponentName, service: IBinder) {
-            mBoundService = (service as SecurityService.LocalBinder).service
-            mBoundService!!.running.addOnPropertyChangedCallback(watcher)
+    fun updateStatistics() {
+        this.findViewById<TextView>(R.id.session_blocked).text = "" + mSecurityService!!.sessionBlocked()
+        this.findViewById<TextView>(R.id.session_connections).text = "" + mSecurityService!!.sessionConnections()
+        this.findViewById<TextView>(R.id.session_bytes).text = "" + mSecurityService!!.sessionBytes()
+
+        this.findViewById<TextView>(R.id.total_blocked).text = "" + mSecurityService!!.totalBlocked()
+        this.findViewById<TextView>(R.id.total_connections).text = "" + mSecurityService!!.totalConnections()
+        this.findViewById<TextView>(R.id.total_bytes).text = "" + mSecurityService!!.totalBytes()
+    }
+
+    private var serviceWatcher = object: OnPropertyChangedCallback() {
+        override fun onPropertyChanged(sender: Observable?, propertyId: Int) {
             updateToggle()
+            updateStatistics()
+        }
+    }
+
+    private val mSecurityServiceBinding: ServiceConnection = object : ServiceConnection {
+        override fun onServiceConnected(className: ComponentName, service: IBinder) {
+            mSecurityService = (service as SecurityService.LocalBinder).service
+            mSecurityService!!.running.addOnPropertyChangedCallback(serviceWatcher)
+            updateToggle()
+            updateStatistics()
         }
 
         override fun onServiceDisconnected(className: ComponentName) {
-            mBoundService!!.running.removeOnPropertyChangedCallback(watcher)
-            mBoundService = null
+            mSecurityService!!.running.removeOnPropertyChangedCallback(serviceWatcher)
+            mSecurityService = null
         }
     }
 
-    fun doBindService() {
-        if (mBoundService == null) {
+    fun bindSecurityService() {
+        if (mSecurityService == null) {
             bindService(
                 Intent(this@SecurityWall, SecurityService::class.java),
-                mConnection,
+                mSecurityServiceBinding,
                 Context.BIND_AUTO_CREATE
             )
         }
     }
 
-    fun doUnbindService() {
-        if (mBoundService != null) {
-            unbindService(mConnection)
-            mBoundService = null
+    fun unbindSecurityService() {
+        if (mSecurityService != null) {
+            unbindService(mSecurityServiceBinding)
+            mSecurityService = null
         }
     }
 
     override fun onDestroy() {
         super.onDestroy()
-        doUnbindService()
+        unbindSecurityService()
     }
 
     companion object {
-        val TAG = "SecurityUI";
+        val TAG = "SecurityUI"
     }
 }

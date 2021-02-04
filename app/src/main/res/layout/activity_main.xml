@@ -2,41 +2,182 @@
 <androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
-    android:orientation="vertical"
     android:layout_width="fill_parent"
     android:layout_height="fill_parent"
-    android:background="#FFFFFF"
+    android:background="#ebebeb"
+    android:orientation="vertical"
     tools:context=".SecurityWall">
 
 
-    <androidx.constraintlayout.widget.ConstraintLayout
-        android:layout_width="match_parent"
-        android:layout_height="180dp"
-        app:layout_constraintBottom_toBottomOf="parent"
+    <androidx.cardview.widget.CardView
+        android:id="@+id/toggle_view"
+        android:layout_width="fill_parent"
+        android:layout_height="wrap_content"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toTopOf="parent">
 
-        <ImageView
-            android:id="@+id/image_status"
-            android:layout_width="wrap_content"
-            android:layout_height="90dp"
-            app:layout_constraintBottom_toTopOf="@id/enable_switch"
-            app:layout_constraintEnd_toEndOf="parent"
-            app:layout_constraintStart_toStartOf="parent"
-            app:srcCompat="@drawable/ic_lock_open" />
+        <androidx.constraintlayout.widget.ConstraintLayout
+            android:layout_width="match_parent"
+            android:layout_height="240dp">
 
-        <Switch
-            android:id="@+id/enable_switch"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:paddingBottom="80dp"
-            android:paddingTop="40dp"
-            android:scaleX="2"
-            android:scaleY="2"
-            app:layout_constraintBottom_toBottomOf="parent"
-            app:layout_constraintEnd_toEndOf="parent"
-            app:layout_constraintStart_toStartOf="parent"
-            app:layout_constraintTop_toBottomOf="parent"
-            android:onClick="toggleProtection"/>
-    </androidx.constraintlayout.widget.ConstraintLayout>
+            <TextView
+                android:id="@+id/status_text"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                app:layout_constraintTop_toTopOf="parent"
+                app:layout_constraintBottom_toTopOf="@id/status_image"
+                app:layout_constraintEnd_toEndOf="parent"
+                app:layout_constraintStart_toStartOf="parent"
+                android:textStyle="bold"
+                android:textSize="30dp"></TextView>
+
+            <ImageView
+                android:id="@+id/status_image"
+                android:layout_width="wrap_content"
+                android:layout_height="90dp"
+                app:layout_constraintBottom_toTopOf="@id/status_toggle"
+                app:layout_constraintEnd_toEndOf="parent"
+                app:layout_constraintStart_toStartOf="parent"
+                app:srcCompat="@drawable/ic_lock_open" />
+
+            <Switch
+                android:id="@+id/status_toggle"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:enabled="false"
+                android:onClick="toggleProtection"
+                android:paddingTop="40dp"
+                android:paddingBottom="80dp"
+                android:scaleX="2"
+                android:scaleY="2"
+                app:layout_constraintBottom_toBottomOf="parent"
+                app:layout_constraintEnd_toEndOf="parent"
+                app:layout_constraintStart_toStartOf="parent"
+                app:layout_constraintTop_toBottomOf="parent" />
+
+        </androidx.constraintlayout.widget.ConstraintLayout>
+    </androidx.cardview.widget.CardView>
+
+    <androidx.cardview.widget.CardView
+        android:layout_width="fill_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="30dp"
+        app:cardBackgroundColor="@color/white"
+        app:cardCornerRadius="4dp"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/toggle_view">
+
+        <TableLayout
+            android:layout_width="fill_parent"
+            android:layout_height="match_parent"
+            android:stretchColumns="1">
+
+            <TableRow>
+
+                <TextView
+                    android:padding="10dp"
+                    android:text="This Session"
+                    android:textStyle="bold" />
+            </TableRow>
+
+            <TableRow>
+
+                <TextView
+                    android:padding="10dp"
+                    android:text="Blocked:" />
+
+                <TextView
+                    android:id="@+id/session_blocked"
+                    android:gravity="right"
+                    android:padding="10dp"
+                    android:text="" />
+            </TableRow>
+
+
+            <TableRow>
+                <TextView
+                    android:padding="10dp"
+                    android:text="Current Connections:" />
+
+                <TextView
+                    android:id="@+id/current_connections"
+                    android:gravity="right"
+                    android:padding="10dp"
+                    android:text="" />
+            </TableRow>
+
+            <TableRow>
+
+                <TextView
+                    android:padding="10dp"
+                    android:text="Connections Inspected:" />
+
+                <TextView
+                    android:id="@+id/session_connections"
+                    android:gravity="right"
+                    android:padding="10dp"
+                    android:text="" />
+            </TableRow>
+
+            <TableRow>
+
+                <TextView
+                    android:padding="10dp"
+                    android:text="Bytes Transferred:" />
+
+                <TextView
+                    android:id="@+id/session_bytes"
+                    android:gravity="right"
+                    android:padding="10dp"
+                    android:text="" />
+            </TableRow>
+
+            <TableRow>
+
+                <TextView
+                    android:padding="10dp"
+                    android:text="Lifetime"
+                    android:textStyle="bold" />
+            </TableRow>
+
+            <TableRow>
+                <TextView
+                    android:padding="10dp"
+                    android:text="Total Blocked Trackers:" />
+
+                <TextView
+                    android:id="@+id/total_blocked"
+                    android:gravity="right"
+                    android:padding="10dp"
+                    android:text="" />
+            </TableRow>
+
+            <TableRow>
+                <TextView
+                    android:padding="10dp"
+                    android:text="Connections Inspected:" />
+
+                <TextView
+                    android:id="@+id/total_connections"
+                    android:gravity="right"
+                    android:padding="10dp"
+                    android:text="" />
+            </TableRow>
+
+            <TableRow>
+
+                <TextView
+                    android:padding="10dp"
+                    android:text="Bytes Transferred:" />
+
+                <TextView
+                    android:id="@+id/total_bytes"
+                    android:gravity="right"
+                    android:padding="10dp"
+                    android:text="" />
+            </TableRow>
+        </TableLayout>
+    </androidx.cardview.widget.CardView>
 
 </androidx.constraintlayout.widget.ConstraintLayout>
