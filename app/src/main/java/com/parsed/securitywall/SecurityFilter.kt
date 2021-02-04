@@ -1,16 +1,15 @@
 package com.parsed.securitywall
 
-import android.content.res.AssetManager
 import android.os.Build
-import android.os.Parcel
+import android.os.Handler
 import android.os.ParcelFileDescriptor
 import android.util.Log
 import androidx.annotation.RequiresApi
-import java.io.FileInputStream
 import java.io.FileOutputStream
-import java.nio.ByteBuffer
 
 class SecurityFilter(service: SecurityService, blockList: String): Runnable{
+    val blockList = blockList;
+    public var blockedTrackers = 0;
 
     companion object {
         const val TAG = "sec_filter"
@@ -22,10 +21,17 @@ class SecurityFilter(service: SecurityService, blockList: String): Runnable{
     val mService = service;
     var quit: FileOutputStream? = null;
 
-    external fun launch(fd: Int, quit_fd: Int)
+    external fun launch(fd: Int, quit_fd: Int, blockList: String)
 
     public fun protect(fd: Int) {
         mService.protect(fd);
+    }
+
+    public fun report(tcp: Int, total_tcp: Int, udp: Int, total_udp: Int, blocked: Int) {
+        blockedTrackers = blocked
+
+        Log.d(TAG, "Reported: " + blocked);
+        mService.updateForegroundNotification(tcp + udp, total_tcp + total_udp, blockedTrackers)
     }
 
     @Override
@@ -61,7 +67,8 @@ class SecurityFilter(service: SecurityService, blockList: String): Runnable{
 
         quit = FileOutputStream(quitPipe[1].fileDescriptor)
 
-        launch(tunFd, quitPipe[0].fd)
+        Log.d(TAG, "Entering native portion");
+        launch(tunFd, quitPipe[0].fd, blockList)
 
         interfaceFileDescriptor.close()
         quitPipe[0].close()

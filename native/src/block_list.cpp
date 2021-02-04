@@ -2,6 +2,7 @@
 #include <sstream>
 #include <algorithm>
 #include <cstring>
+#include "log.h"
 
 // trim from start (in place)
 static inline void ltrim(std::string &s) {
@@ -27,7 +28,6 @@ BlockList::BlockList() {}
 
 BlockList::BlockList(FILE* source) {
   std::stringstream ss;
-
   char buffer[4096];
 
   while(fgets(buffer, sizeof(buffer), source)) {
@@ -37,7 +37,7 @@ BlockList::BlockList(FILE* source) {
       if (delim != line.npos) {
       std::string token = line.substr(delim);
       trim(token);
-      printf("block: \"%s\"\n", token.c_str());
+      debug("block: \"%s\"\n", token.c_str());
       this->block_set.insert(token);
       }
     }

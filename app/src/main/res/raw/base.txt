@@ -22,6 +22,20 @@
 127.0.0.1  localhost
 ::1  localhost
 
+127.0.0.1 www.parsed.uk
+127.0.0.1 www.adskeeper.uk
+127.0.0.1 s-img.adskeeper.co.uk
+127.0.0.1 targeting.vdo.ai
+127.0.0.1 analytics.vdo.ai
+127.0.0.1 track.vdo.ai
+127.0.0.1 prebid-asia.creativecdn.com
+127.0.0.1 analytics.google.com
+127.0.0.1 ads.adserver.newsochub.com
+127.0.0.1 sync.targeting.unrulymedia.com
+127.0.0.1 js.gumgum.com
+127.0.0.1 g2.gumgum.com
+127.0.0.1 creamssicsite.com
+
 127.0.0.1 server.cpmstar.com
 127.0.0.1 ssl.cdne.cpmstar.com
 127.0.0.1 cdn.adskeeper.com

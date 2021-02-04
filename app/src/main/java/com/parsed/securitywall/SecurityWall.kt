@@ -12,8 +12,9 @@ import android.util.Log
 import android.view.View
 import android.widget.ImageView
 import android.widget.Switch
-import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
+import androidx.databinding.Observable
+import androidx.databinding.Observable.OnPropertyChangedCallback
 
 
 class SecurityWall : AppCompatActivity() {
@@ -23,8 +24,10 @@ class SecurityWall : AppCompatActivity() {
         try {
             this.supportActionBar!!.hide()
         } catch (e: NullPointerException) {}
-
         setContentView(R.layout.activity_main)
+
+        doBindService()
+
         val intent = VpnService.prepare(this@SecurityWall)
         if (intent != null) {
             startActivityForResult(intent, 0)
@@ -56,54 +59,45 @@ class SecurityWall : AppCompatActivity() {
     }
 
     private var mBoundService: SecurityService? = null
-    private var mIsBound = false
+
+    fun updateToggle() {
+        val toggleSwitch = findViewById<Switch>(R.id.enable_switch);
+        toggleSwitch.isChecked = mBoundService!!.running.get();
+    }
+
+    private var watcher = object: OnPropertyChangedCallback() {
+        override fun onPropertyChanged(sender: Observable?, propertyId: Int) {
+            updateToggle()
+        }
+    }
 
     private val mConnection: ServiceConnection = object : ServiceConnection {
         override fun onServiceConnected(className: ComponentName, service: IBinder) {
-            // This is called when the connection with the service has
-            // been established, giving us the service object we can use
-            // to interact with the service.  Because we have bound to a
-            // explicit service that we know is running in our own
-            // process, we can cast its IBinder to a concrete class and
-            // directly access it.
             mBoundService = (service as SecurityService.LocalBinder).service
-
-            // Tell the user about this for our demo.
-            Toast.makeText(
-                this@SecurityWall,
-                "Connected to service",
-                Toast.LENGTH_SHORT
-            ).show()
+            mBoundService!!.running.addOnPropertyChangedCallback(watcher)
+            updateToggle()
         }
 
         override fun onServiceDisconnected(className: ComponentName) {
-            // This is called when the connection with the service has
-            // been unexpectedly disconnected -- that is, its process
-            // crashed. Because it is running in our same process, we
-            // should never see this happen.
+            mBoundService!!.running.removeOnPropertyChangedCallback(watcher)
             mBoundService = null
-            Toast.makeText(
-                this@SecurityWall,
-                "Disconnected from service",
-                Toast.LENGTH_SHORT
-            ).show()
         }
     }
 
     fun doBindService() {
-        bindService(
-            Intent(this@SecurityWall, SecurityService::class.java),
-            mConnection,
-            Context.BIND_AUTO_CREATE
-        )
-        mIsBound = true
+        if (mBoundService == null) {
+            bindService(
+                Intent(this@SecurityWall, SecurityService::class.java),
+                mConnection,
+                Context.BIND_AUTO_CREATE
+            )
+        }
     }
 
     fun doUnbindService() {
-        if (mIsBound) {
-            // Detach our existing connection.
+        if (mBoundService != null) {
             unbindService(mConnection)
-            mIsBound = false
+            mBoundService = null
         }
     }
 

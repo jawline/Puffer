@@ -1,3 +1,7 @@
 <resources>
     <string name="app_name">SecurityWall</string>
+    <string name="monitored">Current Connections: </string>
+    <string name="life_monitored">Total Checked Connections: </string>
+    <string name="blocked_trackers">Blocked Trackers: </string>
+    <string name="switch_off">Lower Shields</string>
 </resources>

@@ -2,8 +2,10 @@
 #define _LGH
 
 #ifndef DEBUG
-#define DEBUG 1
+#define DEBUG 0
 #endif
+
+#if defined(DEBUG)
 
 #if defined(__ANDROID__)
 #include <android/log.h>
@@ -18,6 +20,10 @@
         do { if (DEBUG) fprintf(stderr, "%s:%d:%s(): " fmt "\n", __FILE__, \
                                 __LINE__, __func__, ## __VA_ARGS__); } while (0)
 
+#endif
+
+#else
+#define (debug, fmt, ...) do {} while (0)
 #endif
 
 #define DROP_GUARD(e) if (!(e)) { \

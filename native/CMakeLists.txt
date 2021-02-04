@@ -11,3 +11,7 @@ target_link_libraries(security_wall android log)
 
 set_property(TARGET testMode PROPERTY CXX_STANDARD 17)
 set_property(TARGET security_wall PROPERTY CXX_STANDARD 17)
+
+find_package(tmpfile REQUIRED CONFIG)
+target_link_libraries(security_wall tmpfile::tmpfile)
+target_link_libraries(testMode tmpfile::tmpfile)

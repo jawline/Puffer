@@ -382,7 +382,7 @@ void do_nat_cleanup(event_loop_t& loop, timespec& cur_time) {
     }
   }
 
-  debug("STATE: UDP: %lu / %lu (%lu / %lu) bytes TCP: %lu / %lu (%lu / %lu) EXPIRED: %lu BLOCKED (THIS SESSION): %lu", udp, loop.udp_total, loop.udp_bytes_in, loop.udp_bytes_out, tcp, loop.tcp_total, loop.tcp_bytes_in, loop.tcp_bytes_out, expired, loop.blocked);
+  report(loop, udp, tcp, expired);
 }
 
 void user_space_ip_proxy(int tunnel_fd, event_loop_t loop) {
