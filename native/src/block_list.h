@@ -2,10 +2,11 @@
 #define _BLOCK_LIST
 #include <set>
 #include <string>
+#include <regex>
 
 class BlockList {
 private:
-  std::set<std::string> block_set;
+  std::vector<std::string> block_includes;
 public:
   BlockList();
   BlockList(FILE* source);

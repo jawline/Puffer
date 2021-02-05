@@ -74,7 +74,7 @@ class SecurityService : VpnService(), Handler.Callback {
         } else {
             Log.d(TAG, "connecting")
             connect()
-            updateForegroundNotification(0)
+            updateForegroundNotification()
             Service.START_STICKY
         }
     }
@@ -91,7 +91,7 @@ class SecurityService : VpnService(), Handler.Callback {
         clearNotification()
     }
 
-    fun report(currentTcp: Int, currentUdp: Int, newTcp: Int, newUdp: Int, newBytesIn: Int, newBytesOut: Int, newBlocked: Int) {
+    fun report(newTcp: Long, newUdp: Long, newBytesIn: Long, newBytesOut: Long, newBlocked: Long) {
         mStatistics!!.totalTcp += newTcp
         mStatistics!!.totalUdp += newUdp
         mStatistics!!.totalBytesIn += newBytesIn
@@ -101,10 +101,11 @@ class SecurityService : VpnService(), Handler.Callback {
 
         Handler(Looper.getMainLooper()).postDelayed({
             running.notifyChange()
-            updateForegroundNotification(currentTcp + currentUdp)
+            updateForegroundNotification()
         }, 50)
     }
 
+    fun currentConnections() = if (mSecurityFilter != null) mSecurityFilter!!.currentTcp + mSecurityFilter!!.currentUdp else 0
     fun sessionBlocked() = if (mSecurityFilter != null) mSecurityFilter!!.lastBlocked else 0
     fun sessionConnections() = if (mSecurityFilter != null) mSecurityFilter!!.lastTcp + mSecurityFilter!!.lastUdp else 0
     fun sessionBytes() = if (mSecurityFilter != null) mSecurityFilter!!.lastBytesIn + mSecurityFilter!!.lastBytesOut else 0
@@ -114,21 +115,21 @@ class SecurityService : VpnService(), Handler.Callback {
     fun totalBytes() = if (mStatistics != null) mStatistics!!.totalBytesIn + mStatistics!!.totalBytesOut else 0
 
     private fun clearNotification() = notificationManager().cancel(1)
-    private fun updateForegroundNotification(current: Int) {
+    private fun updateForegroundNotification() {
         val pending = Intent(this, SecurityService::class.java).setAction(ACTION_STOP)
         var action = Notification.Action.Builder(
-            R.drawable.ic_lock_open,
+            R.drawable.ic_lock_unlocked,
             getString(R.string.switch_off),
             PendingIntent.getService(this, 0, pending, 0)
         ).build()
         var bigTextStyle = Notification.BigTextStyle().bigText(
             getString(R.string.life_blocked_trackers) + " " + mStatistics!!.trackersBlocked + "\n" + getString(
                 R.string.monitored
-            ) + " " + current + "\n" + getString(R.string.life_monitored) + " " + mStatistics!!.totalConnections()
+            ) + " " + currentConnections() + "\n" + getString(R.string.life_monitored) + " " + mStatistics!!.totalConnections()
         )
 
         val notification = Notification.Builder(this, NOTIFICATION_CHANNEL_ID)
-            .setSmallIcon(R.drawable.ic_launcher_foreground)
+            .setSmallIcon(R.drawable.ic_locked_foreground)
             .setStyle(bigTextStyle)
             .setContentTitle(getString(R.string.blocked_trackers) + " " + sessionBlocked())
             .addAction(action)

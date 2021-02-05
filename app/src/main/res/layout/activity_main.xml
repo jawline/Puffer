@@ -19,7 +19,7 @@
 
         <androidx.constraintlayout.widget.ConstraintLayout
             android:layout_width="match_parent"
-            android:layout_height="240dp">
+            android:layout_height="280dp">
 
             <TextView
                 android:id="@+id/status_text"
@@ -35,11 +35,13 @@
             <ImageView
                 android:id="@+id/status_image"
                 android:layout_width="wrap_content"
-                android:layout_height="90dp"
+                android:layout_height="130dp"
+                android:minHeight="0dp"
+                android:minWidth="0dp"
                 app:layout_constraintBottom_toTopOf="@id/status_toggle"
                 app:layout_constraintEnd_toEndOf="parent"
                 app:layout_constraintStart_toStartOf="parent"
-                app:srcCompat="@drawable/ic_lock_open" />
+                app:srcCompat="@drawable/ic_lock_locked" />
 
             <Switch
                 android:id="@+id/status_toggle"

@@ -68,21 +68,22 @@ class SecurityWall : AppCompatActivity() {
 
         if (isChecked) {
             statusText.setText(R.string.user_protected)
-            statusView.setImageResource(R.drawable.ic_lock)
+            statusView.setImageResource(R.drawable.ic_lock_locked)
         } else {
             statusText.setText(R.string.user_unprotected)
-            statusView.setImageResource(R.drawable.ic_lock_open)
+            statusView.setImageResource(R.drawable.ic_lock_unlocked)
         }
     }
 
     fun updateStatistics() {
+        this.findViewById<TextView>(R.id.current_connections).text = "" + mSecurityService!!.currentConnections()
         this.findViewById<TextView>(R.id.session_blocked).text = "" + mSecurityService!!.sessionBlocked()
         this.findViewById<TextView>(R.id.session_connections).text = "" + mSecurityService!!.sessionConnections()
-        this.findViewById<TextView>(R.id.session_bytes).text = "" + mSecurityService!!.sessionBytes()
+        this.findViewById<TextView>(R.id.session_bytes).text = "" + bytesToString(mSecurityService!!.sessionBytes())
 
         this.findViewById<TextView>(R.id.total_blocked).text = "" + mSecurityService!!.totalBlocked()
         this.findViewById<TextView>(R.id.total_connections).text = "" + mSecurityService!!.totalConnections()
-        this.findViewById<TextView>(R.id.total_bytes).text = "" + mSecurityService!!.totalBytes()
+        this.findViewById<TextView>(R.id.total_bytes).text = "" + bytesToString(mSecurityService!!.totalBytes())
     }
 
     private var serviceWatcher = object: OnPropertyChangedCallback() {
@@ -130,5 +131,15 @@ class SecurityWall : AppCompatActivity() {
 
     companion object {
         val TAG = "SecurityUI"
+        fun bytesToString(bytes: Long) = when {
+            bytes == Long.MIN_VALUE || bytes < 0 -> "N/A"
+            bytes < 1024L -> "$bytes B"
+            bytes <= 0xfffccccccccccccL shr 40 -> "%.1f KiB".format(bytes.toDouble() / (0x1 shl 10))
+            bytes <= 0xfffccccccccccccL shr 30 -> "%.1f MiB".format(bytes.toDouble() / (0x1 shl 20))
+            bytes <= 0xfffccccccccccccL shr 20 -> "%.1f GiB".format(bytes.toDouble() / (0x1 shl 30))
+            bytes <= 0xfffccccccccccccL shr 10 -> "%.1f TiB".format(bytes.toDouble() / (0x1 shl 40))
+            bytes <= 0xfffccccccccccccL -> "%.1f PiB".format((bytes shr 10).toDouble() / (0x1 shl 40))
+            else -> "%.1f EiB".format((bytes shr 20).toDouble() / (0x1 shl 40))
+        }
     }
 }

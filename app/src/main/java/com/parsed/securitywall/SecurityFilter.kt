@@ -8,11 +8,13 @@ import java.io.FileOutputStream
 
 class SecurityFilter(service: SecurityService, blockList: String): Thread() {
     val blockList = blockList
-    var lastTcp = 0
-    var lastUdp = 0
-    var lastBlocked = 0
-    var lastBytesIn = 0
-    var lastBytesOut = 0
+    var currentTcp = 0L
+    var currentUdp = 0L
+    var lastTcp = 0L
+    var lastUdp = 0L
+    var lastBlocked = 0L
+    var lastBytesIn = 0L
+    var lastBytesOut = 0L
 
     val mService = service
     var quit: FileOutputStream? = null
@@ -23,8 +25,10 @@ class SecurityFilter(service: SecurityService, blockList: String): Thread() {
         mService.protect(fd)
     }
 
-    fun report(tcp: Int, totalTcp: Int, udp: Int, totalUdp: Int, totalBytesIn: Int, totalBytesOut: Int, blocked: Int) {
-        mService.report(tcp, udp, totalTcp - lastTcp, totalUdp - lastUdp, totalBytesIn - lastBytesIn, totalBytesOut - lastBytesOut, blocked - lastBlocked)
+    fun report(tcp: Long, totalTcp: Long, udp: Long, totalUdp: Long, totalBytesIn: Long, totalBytesOut: Long, blocked: Long) {
+        currentTcp = tcp
+        currentUdp = udp
+        mService.report(totalTcp - lastTcp, totalUdp - lastUdp, totalBytesIn - lastBytesIn, totalBytesOut - lastBytesOut, blocked - lastBlocked)
         lastTcp = totalTcp
         lastUdp = totalUdp
         lastBlocked = blocked

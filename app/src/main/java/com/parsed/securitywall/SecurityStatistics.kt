@@ -6,11 +6,11 @@ import com.google.gson.reflect.TypeToken
 import java.io.*
 
 class SecurityStatistics {
-    var totalTcp: Int
-    var totalUdp: Int
-    var totalBytesIn: Int
-    var totalBytesOut: Int
-    var trackersBlocked: Int
+    var totalTcp: Long
+    var totalUdp: Long
+    var totalBytesIn: Long
+    var totalBytesOut: Long
+    var trackersBlocked: Long
 
     init {
         totalTcp = 0
