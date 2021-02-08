@@ -62,7 +62,8 @@ class SecurityWall : AppCompatActivity() {
         val statusText = this.findViewById<TextView>(R.id.status_text)
         val statusView = this.findViewById<ImageView>(R.id.status_image)
         val toggleSwitch = findViewById<Switch>(R.id.status_toggle)
-        val isChecked = mSecurityService!!.running.get()
+
+        val isChecked = if (mSecurityService != null) mSecurityService!!.running.get() else { false }
         toggleSwitch.isChecked = isChecked
         toggleSwitch.isEnabled = true
 

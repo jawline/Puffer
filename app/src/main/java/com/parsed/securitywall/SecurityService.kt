@@ -31,7 +31,7 @@ class SecurityService : VpnService(), Handler.Callback {
         notificationManager().createNotificationChannel(
             NotificationChannel(
                 NOTIFICATION_CHANNEL_ID, NOTIFICATION_CHANNEL_ID,
-                NotificationManager.IMPORTANCE_MIN
+                NotificationManager.IMPORTANCE_LOW
             )
         )
         Log.d(TAG, "Service Created")

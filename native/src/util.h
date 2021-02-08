@@ -1,5 +1,6 @@
 #ifndef _UTIL
 #define _UTIL
+#include "network.h"
 
 static inline void set_nonblocking(int fd) {
   int flags = fcntl(fd, F_GETFL);
@@ -11,24 +12,6 @@ static inline void set_fast_tcp(int fd) {
   const int yes = 1;
   setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, (void *)&yes, sizeof(yes));
   setsockopt(fd, IPPROTO_TCP, TCP_QUICKACK, (void *)&yes, sizeof(yes));
-}
-
-static inline void listen_epollin(int epoll_fd, int fd) {
-  struct epoll_event event = { 0 };
-
-  event.events = EPOLLIN;
-  event.data.fd = fd;
- 
-  fatal_guard(epoll_ctl(epoll_fd, EPOLL_CTL_ADD, fd, &event));
-}
-
-static inline void initial_listen_tcp(int epoll_fd, int fd) {
-  struct epoll_event event = { 0 };
-
-  event.events = EPOLLOUT | EPOLLHUP;
-  event.data.fd = fd;
- 
-  fatal_guard(epoll_ctl(epoll_fd, EPOLL_CTL_ADD, fd, &event));
 }
 
 static inline void listen_tcp(int epoll_fd, int fd) {

@@ -1,79 +1,7 @@
 #ifndef _GR
 #define _GR
-
-#if defined(__ANDROID__)
-#include <jni.h>
-#endif
-
-#include <memory>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <unistd.h>
-#include <sys/socket.h>
-#include <linux/if.h>
-#include <linux/if_tun.h>
-#include <linux/tcp.h>
-#include <sys/types.h>
-#include <sys/ioctl.h>
-#include <sys/stat.h>
-#include <fcntl.h>
-#include <arpa/inet.h> 
-#include <sys/select.h>
-#include <sys/time.h>
-#include <errno.h>
-#include <stdarg.h>
-#include <sys/epoll.h>
-#include <map>
-#include <netinet/udp.h>
-#include <stdint.h>
-#include <sys/timerfd.h>
-#include <sys/types.h>
-#include <time.h>
-#include "log.h"
-#include "block_list.h"
-
-#define MTU 1500
-#define MAX_EVENTS 500
-
-#define MAX(a, b) ((a > b) ? a : b)
-
-#define fatal_guard(r) \
-  if (r < 0) { \
-    debug("Guard violated"); \
-    exit(1); \
-  }
-
-struct ip {
-    uint8_t ihl : 4;
-    uint8_t version : 4;
-    uint8_t tos;
-    uint16_t len;
-    uint16_t id;
-    uint16_t flags : 3;
-    uint16_t frag_offset : 13;
-    uint8_t ttl;
-    uint8_t proto;
-    uint16_t csum;
-    uint32_t saddr;
-    uint32_t daddr;
-} __attribute__((packed));
-
-struct ip_port_protocol {
-  uint32_t ip;
-  uint16_t src_port;
-  uint16_t dst_port;
-  uint8_t proto;
-
-  bool operator==(const ip_port_protocol &o) const {
-    return memcmp(this, &o, sizeof(*this)) == 0; 
-  }
-
-  // Impl comparison to allow use in a map
-  bool operator<(const ip_port_protocol &o) const {
-    return memcmp(this, &o, sizeof(*this)) < 0;
-  }
-};
+#include "network.h"
+#include "socket.h"
 
 struct tcp_state {
   uint32_t them_seq;
@@ -91,19 +19,6 @@ struct tcp_state {
   bool ack_rd;
 
   bool first_packet;
-};
-
-struct msg_return {
-  int fd;
-
-  sockaddr_in src;
-  sockaddr_in dst;
-
-  uint8_t proto;
-  struct timespec last_use;
-
-  // Only set on TCP packets
-  std::shared_ptr<tcp_state> state;
 };
 
 typedef struct event_loop {
@@ -137,8 +52,8 @@ typedef struct event_loop {
   int quit_fd;
   int timer_fd;
 
-  std::map<ip_port_protocol, msg_return> udp_pairs;
-  std::map<int, msg_return> udp_return;
+  std::map<ip_port_protocol, std::shared_ptr<Socket>> outbound_nat;
+  std::map<int, std::shared_ptr<Socket>> inbound_nat;
 
   BlockList block;
 
@@ -146,6 +61,39 @@ typedef struct event_loop {
   JNIEnv *env;
   jobject swall;
 #endif
+
+  inline void register_udp(ip_port_protocol const& id, std::shared_ptr<Socket> new_entry) {
+    udp_total += 1;
+    outbound_nat[id] = new_entry;
+    inbound_nat[new_entry->fd] = new_entry;
+    listen_in(new_entry->fd);
+  }
+
+  inline void register_tcp(ip_port_protocol const& id, std::shared_ptr<Socket> new_entry) {
+    tcp_total += 1;
+    outbound_nat[id] = new_entry;
+    inbound_nat[new_entry->fd] = new_entry;
+
+    // Now we don't actually reply to this new connection yet, just add it into the NAT
+    // When EPOLLOUT fires on the TCP out or HUP fires then we send a related SYN-ACK or
+    // fuck off message 
+    listen_initial_tcp(new_entry->fd);
+  }
+
+  inline void listen_initial_tcp(int fd) {
+    struct epoll_event event = { 0 };
+    event.events = EPOLLOUT | EPOLLHUP;
+    event.data.fd = fd;
+    fatal_guard(epoll_ctl(epoll_fd, EPOLL_CTL_ADD, fd, &event));
+  }
+
+  inline void listen_in(int fd) {
+    struct epoll_event event = { 0 };
+    event.events = EPOLLIN;
+    event.data.fd = fd;
+    fatal_guard(epoll_ctl(epoll_fd, EPOLL_CTL_ADD, fd, &event));
+  }
+
 } event_loop_t;
 
 void user_space_ip_proxy(int tunnel_fd, event_loop_t loop);
