@@ -82,7 +82,7 @@ public:
     debug("Dest: %s %i", inet_ntoa(in_addr { dst.sin_addr.s_addr }), dst.sin_port);
   }
 
-  virtual bool on_tun(int tun_fd, char* ip, char* proto, char* data, size_t data_size) {
+  virtual bool on_tun(int tun_fd, char* ip, char* proto, char* data, size_t data_size, struct stats& stats) {
     auto hdr = (struct ip*) ip;
     auto tcp_hdr = (struct tcphdr*) proto;
     auto ip_len = ntohs(hdr->len);

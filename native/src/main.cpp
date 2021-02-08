@@ -72,7 +72,7 @@ void process_packet_udp(event_loop_t& loop, struct ip* hdr, char* bytes, size_t 
   bytes = bytes + sizeof(struct udphdr);
   len -= sizeof(struct udphdr);
 
-  udp_socket->on_tun(loop.tunnel_fd, (char*) hdr, (char*) udp_hdr, bytes, len);
+  udp_socket->on_tun(loop.tunnel_fd, (char*) hdr, (char*) udp_hdr, bytes, len, loop.stat);
 }
 
 void process_packet_tcp(event_loop_t& loop, struct ip* hdr, char* bytes, size_t len) {
