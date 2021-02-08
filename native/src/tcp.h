@@ -191,7 +191,43 @@ public:
     return false;
   }
 
-  virtual void on_sock(int sock_fd, char* data, size_t data_size) {}
+  void on_data(int tun_fd, char* data, size_t data_size, struct stats& stats) {
+    debug("TCP: Returning a packet");
+    return_a_tcp_packet(tun_fd, data, data_size, dst);
+  }
+
+  void on_sock(int tun_fd, int events, struct stats& stats) {
+    if (events & EPOLLOUT) {
+      debug("TCP Connected - it's TIME TO SEND A SYN-ACK");
+
+      char ipp[1500];
+      ssize_t ipp_sz;
+
+      debug("SYN-ACK numbers %u %u", us_seq, them_seq + 1);
+      size_t pkt_sz = assemble_tcp_packet(ipp, 1500, us_seq++, them_seq + 1, NULL, 0, src, dst, false, true, true, false, false);
+      DROP_GUARD(pkt_sz > 0);
+      DROP_GUARD(write(tun_fd, ipp, pkt_sz) >= 0); // TODO: Deal with this failure!!
+
+      // After sending a SYN-ACK we expect an ACK. Don't touch the REMOTE SOCKET until then
+      // TODO: FixMe: stop_listen(loop.epoll_fd, events[i].data.fd);
+      sent_syn_ack = true;
+    }
+
+    if (events & (EPOLLHUP | EPOLLRDHUP)) {
+      debug("TCP closed - it's time to SEND A FIN");
+
+      // Fabricate a FIN
+      char ipp[1500];
+      ssize_t ipp_sz;
+
+      debug("TCP %i: Upstream closed. Generating FIN with SYN-ACK numbers %u %u", fd, us_seq, them_seq + 1);
+      return_tcp_fin(tun_fd);
+
+      // On the next ACK we actually clean up since we expect an ACK before the session is fully closed
+      close_rd = true;
+      // TODO: stop_listen(loop.epoll_fd, events[i].data.fd); 
+    }
+  }
 };
 
 #endif //SECURITYWALL_TCP_H

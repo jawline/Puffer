@@ -19,11 +19,11 @@ void binddev(event_loop_t& loop, int fd) {
 
 void report(event_loop_t& loop, int udp, int tcp, int expired) {
 
-    debug("STATE: UDP: %lu / %lu (%lu / %lu) bytes TCP: %lu / %lu (%lu / %lu) EXPIRED: %lu BLOCKED (THIS SESSION): %lu", udp, loop.udp_total, loop.udp_bytes_in, loop.udp_bytes_out, tcp, loop.tcp_total, loop.tcp_bytes_in, loop.tcp_bytes_out, expired, loop.blocked);
+    debug("STATE: UDP: %lu / %lu (%lu / %lu) bytes TCP: %lu / %lu (%lu / %lu) EXPIRED: %lu BLOCKED (THIS SESSION): %lu", udp, loop.stat.udp_total, loop.stat.udp_bytes_in, loop.stat.udp_bytes_out, tcp, loop.stat.tcp_total, loop.stat.tcp_bytes_in, loop.stat.tcp_bytes_out, expired, loop.stat.blocked);
 #if defined(__ANDROID__)
     jclass secc = (loop.env)->GetObjectClass(loop.swall);
     jmethodID protect = loop.env->GetMethodID(secc,"report", "(JJJJJJJ)V");
-    (loop.env)->CallVoidMethod(loop.swall, protect, (jlong) tcp, (jlong) loop.tcp_total, (jlong) udp, (jlong) loop.udp_total, (jlong) (loop.tcp_bytes_in + loop.udp_bytes_in), (jlong) (loop.tcp_bytes_out + loop.udp_bytes_out), (jlong) loop.blocked);
+    (loop.env)->CallVoidMethod(loop.swall, protect, (jlong) tcp, (jlong) loop.stat.tcp_total, (jlong) udp, (jlong) loop.stat.udp_total, (jlong) (loop.stat.tcp_bytes_in + loop.stat.udp_bytes_in), (jlong) (loop.stat.tcp_bytes_out + loop.stat.udp_bytes_out), (jlong) loop.stat.blocked);
 #else
 
 #endif

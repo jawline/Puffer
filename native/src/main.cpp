@@ -209,9 +209,9 @@ void user_space_ip_proxy(int tunnel_fd, event_loop_t loop) {
   set_nonblocking(tunnel_fd);
 
   debug("Preparing epoll listeners");
-  listen_epollin(loop.epoll_fd, tunnel_fd);
-  listen_epollin(loop.epoll_fd, loop.quit_fd);
-  listen_epollin(loop.epoll_fd, loop.timer_fd);
+  loop.listen_in(tunnel_fd);
+  loop.listen_in(loop.quit_fd);
+  loop.listen_in(loop.timer_fd);
   debug("Setup epoll listeners");
 
   struct timespec cur_time;
@@ -250,61 +250,9 @@ void user_space_ip_proxy(int tunnel_fd, event_loop_t loop) {
             debug("READ: %i SZ: %lu", events[i].data.fd, len);
             auto proto = fd_scan->second->proto;
             fd_scan->second->last_use = cur_time;
-            fd_scan->second->on_sock(loop.tunnel_fd, buf, len);
-            //auto ret = fd_scan->second;
-            //debug("Socket Proto: %i", proto);
-            /*switch (proto) {
-              case IPPROTO_UDP: {
-                fd_scan-second->on_sock(loop.tunnel_fd, buf, len);
-                //return_a_udp_packet(buf, len, ret, loop, addr);
-                break;
-              }
-              case IPPROTO_TCP:
-                //debug("WE GOT A TCP PACKET TO RETURN. FABRICATE A PSH %li", len);
-                if (len == 0) {
-                  debug("Connection gracefully closed");
-                } else {
-                  debug("TCP: Returning a packet");
-                  return_a_tcp_packet(buf, len, ret, loop, addr);
-                }
-                break;
-            }*/
-          } else if (events[i].events & EPOLLOUT) {
-            debug("TCP Connected - it's TIME TO SEND A SYN-ACK");
-
-            char ipp[1500];
-            ssize_t ipp_sz;
-            auto ret = (*fd_scan).second;
-            auto tcp_state = ret.state;
-
-            sockaddr_in addr = ret.dst;
-
-            debug("SYN-ACK numbers %u %u", tcp_state->us_seq, tcp_state->them_seq + 1);
-            size_t pkt_sz = assemble_tcp_packet(ipp, 1500, tcp_state->us_seq++, tcp_state->them_seq + 1, NULL, 0, ret.src, addr, false, true, true, false, false);
-            DROP_GUARD(pkt_sz > 0);
-            DROP_GUARD(write(loop.tunnel_fd, ipp, pkt_sz) >= 0);
-
-            // After sending a SYN-ACK we expect an ACK. Don't touch the REMOTE SOCKET until then
-            stop_listen(loop.epoll_fd, events[i].data.fd);
-
-            tcp_state->sent_syn_ack = true;
+            fd_scan->second->on_data(loop.tunnel_fd, buf, len, loop.stat);
           }
-          if (events[i].events & (EPOLLHUP | EPOLLRDHUP)) {
-            debug("TCP closed - it's time to SEND A FIN");
-
-            // Fabricate a FIN
-            char ipp[1500];
-            ssize_t ipp_sz;
-            auto ret = (*fd_scan).second;
-            auto tcp_state = ret.state;
-
-            debug("TCP %i: Upstream closed. Generating FIN with SYN-ACK numbers %u %u", events[i].data.fd, tcp_state->us_seq, tcp_state->them_seq + 1);
-            return_tcp_fin(ret, loop);
-
-            // On the next ACK we actually clean up since we expect an ACK before the session is fully closed
-            tcp_state->close_rd = true;
-            stop_listen(loop.epoll_fd, events[i].data.fd); 
-          }
+          fd_scan->second->on_sock(loop.tunnel_fd, events[i].events, loop.stat);
         }
       }
     }

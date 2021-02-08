@@ -15,9 +15,10 @@ public:
         this->proto = proto;
         clock_gettime(CLOCK_MONOTONIC, &last_use);
     }
-    virtual ~Socket() {
+    ~Socket() {
       if (fd >= 0) {
         close(fd);
+        fd = -1;
       }
     }
 
@@ -30,7 +31,8 @@ public:
     struct timespec last_use;
 
     virtual bool on_tun(int tun_fd, char* ip, char* proto, char* data, size_t data_size);
-    virtual void on_sock(int tun_fd, char* data, size_t data_size);
+    virtual void on_data(int tun_fd, char* data, size_t data_size, struct stats& stats);
+    virtual void on_sock(int tun_fd, int events, struct stats& stats);
 };
 
 #endif
