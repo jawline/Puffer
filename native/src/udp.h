@@ -1,5 +1,6 @@
 #ifndef SECURITYWALL_UDP_H
 #define SECURITYWALL_UDP_H
+#include "packet.h"
 #include "socket.h"
 #include "network.h"
 #include "util.h"

@@ -20,13 +20,6 @@ private:
 
   bool first_packet;
 
-  void return_tcp_rst(int tun_fd, const sockaddr_in& src, const sockaddr_in& dst) {
-    char ipp[MTU];
-    size_t pkt_sz = assemble_tcp_packet(ipp, MTU, 0, 0, nullptr, 0, src, dst, false, false, false, false, true);
-    DROP_GUARD(pkt_sz > 0);
-    write(tun_fd, ipp, pkt_sz);
-  }
-  
   void return_a_tcp_packet(int tun_fd, char* data, size_t len, const sockaddr_in& addr) {
   
     debug("Source: %s %i", inet_ntoa(in_addr { addr.sin_addr.s_addr }), addr.sin_port);
@@ -227,6 +220,13 @@ public:
       close_rd = true;
       // TODO: stop_listen(loop.epoll_fd, events[i].data.fd); 
     }
+  }
+
+  static inline void return_tcp_rst(int tun_fd, const sockaddr_in& src, const sockaddr_in& dst) {
+    char ipp[MTU];
+    size_t pkt_sz = assemble_tcp_packet(ipp, MTU, 0, 0, nullptr, 0, src, dst, false, false, false, false, true);
+    DROP_GUARD(pkt_sz > 0);
+    write(tun_fd, ipp, pkt_sz);
   }
 };
 

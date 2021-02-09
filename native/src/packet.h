@@ -1,6 +1,6 @@
-#ifndef _PACKET
-#define _PACKET
-#include "general.h"
+#ifndef SECURITYWALL_PACKET
+#define SECURITYWALL_PACKET
+#include "network.h"
 
 /**
  * Assemble an IP header for a packet returning to the device tun device.
