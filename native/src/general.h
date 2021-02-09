@@ -8,19 +8,7 @@
 #include "tcp.h"
 
 class EventLoop {
-public:
-
-  EventLoop(int tunnel_fd, int quit_fd, BlockList const& list): tunnel_fd(tunnel_fd), quit_fd(quit_fd), block(list) {
-    stat = { 0 };
-
-    epoll_fd = epoll_create(5);
-    timer_fd = timerfd_create(CLOCK_MONOTONIC, TFD_NONBLOCK);
-
-    fatal_guard(epoll_fd);
-    fatal_guard(timer_fd);
-
-    debug("Epoll FD: %i", epoll_fd);
-  }
+private:
 
   stats stat;
 
@@ -74,7 +62,7 @@ public:
 
   inline void cleanup_removed_fd(int fd) {
     stop_listen(epoll_fd, fd);
-    fatal_guard(close(fd));
+
     // Find and remove the outbound path NAT
     auto oit = outbound_nat.begin();
     while (oit != outbound_nat.end()) {
@@ -180,7 +168,7 @@ public:
     bytes = bytes + sizeof(struct udphdr);
     len -= sizeof(struct udphdr);
 
-    udp_socket->on_tun(tunnel_fd, (char*) hdr, (char*) udp_hdr, bytes, len, stat);
+    udp_socket->on_tun(tunnel_fd, (char*) hdr, (char*) udp_hdr, bytes, len, block, stat);
   }
 
   inline void process_packet_tcp(struct ip* hdr, char* bytes, size_t len) {
@@ -199,7 +187,7 @@ public:
       // TODO: Guards!
       char* data_start = bytes + (tcp_hdr->doff << 2);
       size_t data_size = ntohs(hdr->len) - sizeof(ip) - (tcp_hdr->doff << 2);
-      fd_scan->second->on_tun(tunnel_fd, (char*) hdr, (char*) tcp_hdr, data_start, data_size, stat);
+      fd_scan->second->on_tun(tunnel_fd, (char*) hdr, (char*) tcp_hdr, data_start, data_size, block, stat);
     } else {
       // Oooh, this might be a new TCP connection. We need to figure that out (is it a SYN)
 
@@ -307,12 +295,35 @@ public:
         debug("READ: %i SZ: %lu", event_fd, len);
         auto proto = fd_scan->second->proto;
         fd_scan->second->last_use = cur_time;
-        fd_scan->second->on_data(tunnel_fd, buf, len, stat);
+
+        if (!fd_scan->second->on_data(tunnel_fd, buf, len, stat)) {
+          remove_fd_from_nat(event_fd);
+          return;
+        }
       }
-      fd_scan->second->on_sock(tunnel_fd, events, stat);
+
+      if (!fd_scan->second->on_sock(tunnel_fd, events, stat)) {
+        remove_fd_from_nat(event_fd);
+        return;
+      }
+
     } else {
       debug("ERROR: Missing entry in NAT!?");
     }
+  }
+
+public:
+
+  EventLoop(int tunnel_fd, int quit_fd, BlockList const& list): tunnel_fd(tunnel_fd), quit_fd(quit_fd), block(list) {
+    stat = { 0 };
+
+    epoll_fd = epoll_create(5);
+    timer_fd = timerfd_create(CLOCK_MONOTONIC, TFD_NONBLOCK);
+
+    fatal_guard(epoll_fd);
+    fatal_guard(timer_fd);
+
+    debug("Epoll FD: %i", epoll_fd);
   }
 
   void user_space_ip_proxy() {

@@ -19,7 +19,7 @@ static inline void listen_tcp(int epoll_fd, int fd) {
 
   event.events = EPOLLIN | EPOLLHUP | EPOLLRDHUP;
   event.data.fd = fd;
- 
+
   fatal_guard(epoll_ctl(epoll_fd, EPOLL_CTL_ADD, fd, &event));
 }
 

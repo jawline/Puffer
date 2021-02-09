@@ -41,7 +41,7 @@ BlockList::BlockList(FILE* source) {
   fclose(source);
 }
 
-bool BlockList::block(char const* hostname) {
+bool BlockList::block(char const* hostname) const {
   //TODO: This should be a unified regular expression but it's too complex out of the box for C++'s regex style. We can improve this later
   auto host = std::string(hostname);
   for (size_t i = 0; i < this->block_includes.size(); i++) {

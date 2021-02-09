@@ -10,7 +10,7 @@ private:
 public:
   BlockList();
   BlockList(FILE* source);
-  bool block(char const* hostname);
+  bool block(char const* hostname) const;
 };
 
 #endif

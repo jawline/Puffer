@@ -1,6 +1,13 @@
 #ifndef SECURITYWALL_TCP_H
 #define SECURITYWALL_TCP_H
 #include "socket.h"
+#include "tls.h"
+
+static inline ssize_t tun_write(int tun_fd, char* pkt, size_t pkt_sz) {
+  ssize_t r;
+  while ((r = write(tun_fd, pkt, pkt_sz)) == -EAGAIN) {}
+  return r;
+}
 
 class TcpStream: public Socket {
 private:
@@ -21,34 +28,31 @@ private:
   bool first_packet;
 
   void return_a_tcp_packet(int tun_fd, char* data, size_t len, const sockaddr_in& addr) {
-  
+
     debug("Source: %s %i", inet_ntoa(in_addr { addr.sin_addr.s_addr }), addr.sin_port);
     debug("Dest: %s %i", inet_ntoa(in_addr { src.sin_addr.s_addr }), src.sin_port);
-  
+
     char ipp[MTU];
-
     size_t pkt_sz = assemble_tcp_packet(ipp, MTU, us_seq, them_seq + 1, data, len, src, dst, false, false, true, false, false);
-  
-    if (len > 0) {
-      us_seq += len;
-    }
 
-    if (pkt_sz <= 0) {
-      return;
-    }
-  
+    us_seq += len;
+
     DROP_GUARD(pkt_sz > 0);
-    write(tun_fd, ipp, pkt_sz);
-    //tcp_bytes_in += len;
-    // TODO: Increment TCP bytes in
+
+    // TODO: This failing is fatal for the stream
+    // But we currently won't fail gracefully
+    DROP_GUARD(tun_write(tun_fd, ipp, pkt_sz) == pkt_sz);
   }
 
   void return_tcp_fin(int tun_fd) {
+
     char ipp[MTU];
     size_t pkt_sz = assemble_tcp_packet(ipp, MTU, us_seq++, them_seq + 1, NULL, 0, src, dst, false, false, true, true, false);
-  
     DROP_GUARD(pkt_sz > 0);
-    DROP_GUARD(write(tun_fd, ipp, pkt_sz) >= 0);
+
+    // TODO: This failing is fatal for the stream
+    // But we currently won't fail gracefully
+    DROP_GUARD(tun_write(tun_fd, ipp, pkt_sz) == pkt_sz);
   }
 
 public:
@@ -75,7 +79,19 @@ public:
     debug("Dest: %s %i", inet_ntoa(in_addr { dst.sin_addr.s_addr }), dst.sin_port);
   }
 
-  virtual bool on_tun(int tun_fd, char* ip, char* proto, char* data, size_t data_size, struct stats& stats) {
+  static inline bool should_block(char* data, size_t data_size, BlockList const& block) {
+    char* hostname = nullptr;
+    int result = parse_tls_header((uint8_t *) data, data_size, &hostname);
+    bool will_block = false;
+    if (hostname) {
+      debug("SNI: Found %s", hostname);
+      will_block = block.block(hostname);
+    }
+    free(hostname);
+    return will_block;
+  }
+
+  bool on_tun(int tun_fd, char* ip, char* proto, char* data, size_t data_size, BlockList const& block, struct stats& stats) {
     auto hdr = (struct ip*) ip;
     auto tcp_hdr = (struct tcphdr*) proto;
     auto ip_len = ntohs(hdr->len);
@@ -114,7 +130,7 @@ public:
 
       // Decide if this packet is a repeat
       bool is_repeat = tcp_last_seq >= tcp_seq;
-  
+
       if (is_repeat) {
         debug("TCP %i: Repeat packet", fd);
         return false;
@@ -124,35 +140,33 @@ public:
 
       debug("TCP %i: DATA: Sequence: %u (New Expected: %u) Size: %lu", fd, tcp_seq, them_seq, data_size);
 
-      /**
-       * TODO: Fix Me
       if (first_packet) {
-        char* hostname = nullptr;
-        int result = parse_tls_header((uint8_t *) data_start, data_size, &hostname);
-        if (hostname) {
-          debug("SNI: Found %s", hostname);
-          bool res = loop.block.block(hostname);
-          if (res) {
+        if (should_block(data, data_size, block)) {
             debug("SNI: Dropping connection\n");
-            loop.blocked += 1;
-            return_tcp_fin(ret, loop);
+            stats.blocked += 1;
+            return_tcp_fin(tun_fd);
             return true;
-          }
         }
-        free(hostname);
-        first_packet = false;
       }
-      */
-
-      // TODO: FixMe Update statistics
-      // loop.tcp_bytes_out += data_size;
 
       // Send this on to the target
-      if (send(fd, data, data_size, MSG_NOSIGNAL) < 0) {
-        printf("Could not do TCP send\n");
-        // TODO: Error handling on failure
+      char* data = data;
+      size_t remaining = data_size;
+      while (remaining > 0) {
+        ssize_t rd = send(fd, data, remaining, MSG_NOSIGNAL);
+        if (rd < 0) {
+          if (rd == -EAGAIN) {
+            continue;
+          }
+          // TODO: ERROR!
+          debug("Broken outbound stream");
+          return true;
+        }
+        remaining -= rd;
+        data += rd;
       }
 
+      stats.tcp_bytes_out += data_size;
       should_ack = true;
     }
 
@@ -184,12 +198,15 @@ public:
     return false;
   }
 
-  void on_data(int tun_fd, char* data, size_t data_size, struct stats& stats) {
+  bool on_data(int tun_fd, char* data, size_t data_size, struct stats& stats) {
     debug("TCP: Returning a packet");
     return_a_tcp_packet(tun_fd, data, data_size, dst);
+    stats.tcp_bytes_in += data_size;
+    return false;
   }
 
-  void on_sock(int tun_fd, int events, struct stats& stats) {
+  bool on_sock(int tun_fd, int events, struct stats& stats) {
+
     if (events & EPOLLOUT) {
       debug("TCP Connected - it's TIME TO SEND A SYN-ACK");
 
@@ -198,8 +215,10 @@ public:
 
       debug("SYN-ACK numbers %u %u", us_seq, them_seq + 1);
       size_t pkt_sz = assemble_tcp_packet(ipp, 1500, us_seq++, them_seq + 1, NULL, 0, src, dst, false, true, true, false, false);
-      DROP_GUARD(pkt_sz > 0);
-      DROP_GUARD(write(tun_fd, ipp, pkt_sz) >= 0); // TODO: Deal with this failure!!
+      DROP_GUARD_RET(pkt_sz > 0, true);
+
+      // This failing is fatal for the stream
+      DROP_GUARD_RET(tun_write(tun_fd, ipp, pkt_sz) == pkt_sz, true);
 
       // After sending a SYN-ACK we expect an ACK. Don't touch the REMOTE SOCKET until then
       // TODO: FixMe: stop_listen(loop.epoll_fd, events[i].data.fd);
@@ -220,13 +239,15 @@ public:
       close_rd = true;
       // TODO: stop_listen(loop.epoll_fd, events[i].data.fd); 
     }
+
+    return false;
   }
 
   static inline void return_tcp_rst(int tun_fd, const sockaddr_in& src, const sockaddr_in& dst) {
     char ipp[MTU];
     size_t pkt_sz = assemble_tcp_packet(ipp, MTU, 0, 0, nullptr, 0, src, dst, false, false, false, false, true);
     DROP_GUARD(pkt_sz > 0);
-    write(tun_fd, ipp, pkt_sz);
+    DROP_GUARD(write(tun_fd, ipp, pkt_sz) >= 0); // TODO: Deal with this failure!!
   }
 };
 

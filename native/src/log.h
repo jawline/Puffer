@@ -36,4 +36,9 @@
   return - 1; \
 }
 
+#define DROP_GUARD_RET(e, r) if (!(e)) { \
+  debug("Dropped Packet (%i) (DROP GUARD) %i", e, __LINE__); \
+  return r; \
+}
+
 #endif
