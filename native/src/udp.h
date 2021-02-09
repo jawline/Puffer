@@ -11,7 +11,7 @@ public:
 
     UdpStream(int fd, sockaddr_in src, sockaddr_in dst, uint8_t proto): Socket(fd, src, dst, proto) {}
 
-    bool on_tun(int tun_fd, char* ip, char* proto, char* data, size_t data_size, BlockList const& block, struct stats& stats) {
+    bool on_tun(int tun_fd, int epoll_fd, char* ip, char* proto, char* data, size_t data_size, BlockList const& block, struct stats& stats) {
       auto ip_hdr = (struct ip*) ip;
       auto udp_hdr = (struct udphdr*) proto;
 
@@ -25,7 +25,7 @@ public:
       return false;
     }
 
-    bool on_data(int tun_fd, char* data, size_t data_size, struct stats& stats) {
+    bool on_data(int tun_fd, int epoll_fd, char* data, size_t data_size, struct stats& stats) {
       char ipp[MTU];
 
       ssize_t pkt_sz = assemble_udp_packet(ipp, MTU, data, data_size, src, dst);
@@ -37,7 +37,7 @@ public:
       return false;
     }
 
-    bool on_sock(int tun_fd, int events, struct stats& stats) {
+    bool on_sock(int tun_fd, int epoll_fd, int events, struct stats& stats) {
       return false;
     }
 };

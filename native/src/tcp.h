@@ -91,7 +91,7 @@ public:
     return will_block;
   }
 
-  bool on_tun(int tun_fd, char* ip, char* proto, char* data, size_t data_size, BlockList const& block, struct stats& stats) {
+  bool on_tun(int tun_fd, int epoll_fd, char* ip, char* proto, char* data, size_t data_size, BlockList const& block, struct stats& stats) {
     auto hdr = (struct ip*) ip;
     auto tcp_hdr = (struct tcphdr*) proto;
     auto ip_len = ntohs(hdr->len);
@@ -114,8 +114,7 @@ public:
     if (!tcp_hdr->syn && tcp_hdr->ack && sent_syn_ack && !recv_first_ack) {
       debug("TCP %i: Socket ready for data", fd);
       recv_first_ack = true;
-      // TODO: Fixme
-      //listen_tcp(epoll_fd, fd);
+      listen_tcp(epoll_fd, fd);
     }
 
     // The rest of the process flow requires that we have a completed SYN-SYNACK-ACK connection sequence
@@ -185,9 +184,9 @@ public:
 
     // Both sides are closed
     if (close_wr && ack_rd && close_rd) {
+      // Return true -> remove the stream from NAT
       debug("TCP %i: Both sides of the connection have closed and acknowledged", fd);
-      // Clear up for dead session (This will handle removing the listener)
-      // TODO: remove_fd_from_nat(loop, fd);
+      return true;
     }
 
     if (should_ack) {
@@ -198,14 +197,14 @@ public:
     return false;
   }
 
-  bool on_data(int tun_fd, char* data, size_t data_size, struct stats& stats) {
+  bool on_data(int tun_fd, int epoll_fd, char* data, size_t data_size, struct stats& stats) {
     debug("TCP: Returning a packet");
     return_a_tcp_packet(tun_fd, data, data_size, dst);
     stats.tcp_bytes_in += data_size;
     return false;
   }
 
-  bool on_sock(int tun_fd, int events, struct stats& stats) {
+  bool on_sock(int tun_fd, int epoll_fd, int events, struct stats& stats) {
 
     if (events & EPOLLOUT) {
       debug("TCP Connected - it's TIME TO SEND A SYN-ACK");
@@ -221,7 +220,7 @@ public:
       DROP_GUARD_RET(tun_write(tun_fd, ipp, pkt_sz) == pkt_sz, true);
 
       // After sending a SYN-ACK we expect an ACK. Don't touch the REMOTE SOCKET until then
-      // TODO: FixMe: stop_listen(loop.epoll_fd, events[i].data.fd);
+      stop_listen(epoll_fd, fd);
       sent_syn_ack = true;
     }
 
@@ -237,7 +236,7 @@ public:
 
       // On the next ACK we actually clean up since we expect an ACK before the session is fully closed
       close_rd = true;
-      // TODO: stop_listen(loop.epoll_fd, events[i].data.fd); 
+      stop_listen(epoll_fd, fd); 
     }
 
     return false;

@@ -31,9 +31,9 @@ public:
     uint8_t proto;
     struct timespec last_use;
 
-    virtual bool on_tun(int tun_fd, char* ip, char* proto, char* data, size_t data_size, BlockList const& block, struct stats& stats) = 0;
-    virtual bool on_data(int tun_fd, char* data, size_t data_size, struct stats& stats) = 0;
-    virtual bool on_sock(int tun_fd, int events, struct stats& stats) = 0;
+    virtual bool on_tun(int tun_fd, int epoll_fd, char* ip, char* proto, char* data, size_t data_size, BlockList const& block, struct stats& stats) = 0;
+    virtual bool on_data(int tun_fd, int epoll_fd, char* data, size_t data_size, struct stats& stats) = 0;
+    virtual bool on_sock(int tun_fd, int epoll_fd, int events, struct stats& stats) = 0;
 };
 
 #endif

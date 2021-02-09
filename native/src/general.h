@@ -83,7 +83,7 @@ private:
     }
   }
 
-  inline void report(int udp, int tcp, int expired) {
+  inline void report(size_t udp, size_t tcp, size_t expired) {
       debug("STATE: UDP: %lu / %lu (%lu / %lu) bytes TCP: %lu / %lu (%lu / %lu) EXPIRED: %lu BLOCKED (THIS SESSION): %lu", udp, stat.udp_total, stat.udp_bytes_in, stat.udp_bytes_out, tcp, stat.tcp_total, stat.tcp_bytes_in, stat.tcp_bytes_out, expired, stat.blocked);
   #if defined(__ANDROID__)
       jclass secc = (env)->GetObjectClass(swall);
@@ -168,7 +168,7 @@ private:
     bytes = bytes + sizeof(struct udphdr);
     len -= sizeof(struct udphdr);
 
-    udp_socket->on_tun(tunnel_fd, (char*) hdr, (char*) udp_hdr, bytes, len, block, stat);
+    udp_socket->on_tun(tunnel_fd, epoll_fd, (char*) hdr, (char*) udp_hdr, bytes, len, block, stat);
   }
 
   inline void process_packet_tcp(struct ip* hdr, char* bytes, size_t len) {
@@ -187,7 +187,7 @@ private:
       // TODO: Guards!
       char* data_start = bytes + (tcp_hdr->doff << 2);
       size_t data_size = ntohs(hdr->len) - sizeof(ip) - (tcp_hdr->doff << 2);
-      fd_scan->second->on_tun(tunnel_fd, (char*) hdr, (char*) tcp_hdr, data_start, data_size, block, stat);
+      fd_scan->second->on_tun(tunnel_fd, epoll_fd, (char*) hdr, (char*) tcp_hdr, data_start, data_size, block, stat);
     } else {
       // Oooh, this might be a new TCP connection. We need to figure that out (is it a SYN)
 
@@ -296,13 +296,13 @@ private:
         auto proto = fd_scan->second->proto;
         fd_scan->second->last_use = cur_time;
 
-        if (!fd_scan->second->on_data(tunnel_fd, buf, len, stat)) {
+        if (!fd_scan->second->on_data(tunnel_fd, epoll_fd, buf, len, stat)) {
           remove_fd_from_nat(event_fd);
           return;
         }
       }
 
-      if (!fd_scan->second->on_sock(tunnel_fd, events, stat)) {
+      if (!fd_scan->second->on_sock(tunnel_fd, epoll_fd, events, stat)) {
         remove_fd_from_nat(event_fd);
         return;
       }

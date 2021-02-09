@@ -25,12 +25,14 @@ extern "C" JNIEXPORT void JNICALL Java_com_parsed_securitywall_SecurityFilter_la
     rewind(bfile);
     BlockList b(bfile);
 
-    event_loop_t loop(b);
+    debug("Creating event loop");
+
+    EventLoop loop(tunfd, quitfd, b);
     loop.env = env;
     loop.swall = service;
-    loop.quit_fd = quitfd;
-    debug("Creating TESTTUN");
-    user_space_ip_proxy(tunfd, loop);
+
+    debug("Entering proxy");
+    loop.user_space_ip_proxy();
 }
 
 #endif
