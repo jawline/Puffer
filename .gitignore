@@ -18,6 +18,10 @@ native/cmake_install.cmake
 native/CMakeCache.txt
 native/CMakeFiles
 native/Makefile
+native/dev/cmake_install.cmake
+native/dev/CMakeCache.txt
+native/dev/CMakeFiles
+native/dev/Makefile
 libsecurity_wall.a
 libsecurity_wall.so
 testMode

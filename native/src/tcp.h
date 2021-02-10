@@ -5,7 +5,18 @@
 
 static inline ssize_t tun_write(int tun_fd, char* pkt, size_t pkt_sz) {
   ssize_t r;
-  while ((r = write(tun_fd, pkt, pkt_sz)) == -EAGAIN) {}
+  while (true) {
+    r = write(tun_fd, pkt, pkt_sz);
+    if (r == -1) {
+        if (errno == EAGAIN) {
+            log("TCP: TUN Write blocked");
+        } else {
+            log("TCP: Tun write %i", errno);
+        }
+    } else {
+        break;
+    }
+  }
   return r;
 }
 
@@ -33,7 +44,7 @@ private:
     debug("Dest: %s %i", inet_ntoa(in_addr { src.sin_addr.s_addr }), src.sin_port);
 
     char ipp[MTU];
-    size_t pkt_sz = assemble_tcp_packet(ipp, MTU, us_seq, them_seq + 1, data, len, src, dst, false, false, true, false, false);
+    size_t pkt_sz = assemble_tcp_packet(ipp, MTU, us_seq, them_seq + 1, data, len, dst, src, false, false, true, false, false);
 
     us_seq += len;
 
@@ -47,7 +58,7 @@ private:
   void return_tcp_fin(int tun_fd) {
 
     char ipp[MTU];
-    size_t pkt_sz = assemble_tcp_packet(ipp, MTU, us_seq++, them_seq + 1, NULL, 0, src, dst, false, false, true, true, false);
+    size_t pkt_sz = assemble_tcp_packet(ipp, MTU, us_seq++, them_seq + 1, NULL, 0, dst, src, false, false, true, true, false);
     DROP_GUARD(pkt_sz > 0);
 
     // TODO: This failing is fatal for the stream
@@ -96,23 +107,22 @@ public:
     auto tcp_hdr = (struct tcphdr*) proto;
     auto ip_len = ntohs(hdr->len);
     auto tcp_seq = ntohl(tcp_hdr->seq);
-    auto tcp_last_seq = them_seq;
     auto expected = us_ack;
 
-    debug("TCP %i: Packet Length %u, TCP Seq: %u, Them Seq: %u, Expected Seq: %u", fd, ip_len, tcp_seq, tcp_last_seq, expected);
+    debug("TCP %i: Packet Length %u, TCP Seq: %u, Them Seq: %u, Expected Seq: %u", fd, ip_len, tcp_seq, them_seq, expected);
 
     if (tcp_hdr->rst) {
-      debug("TCP %i: Broken stream (RST).", fd);
+      log("TCP %i: Broken stream (RST).", fd);
       return true;
     }
 
     if (tcp_hdr->syn) {
-      debug("TCP %i: Repeat SYN", fd);
+      log("TCP %i: Repeat SYN", fd);
       return false;
     }
 
     if (!tcp_hdr->syn && tcp_hdr->ack && sent_syn_ack && !recv_first_ack) {
-      debug("TCP %i: Socket ready for data", fd);
+      log("TCP %i: Socket ready for data", fd);
       recv_first_ack = true;
       listen_tcp(epoll_fd, fd);
     }
@@ -128,38 +138,43 @@ public:
     if (data_size > 0) {
 
       // Decide if this packet is a repeat
-      bool is_repeat = tcp_last_seq >= tcp_seq;
+      bool is_out_of_order = tcp_seq != (them_seq + 1);
 
-      if (is_repeat) {
-        debug("TCP %i: Repeat packet", fd);
+      if (is_out_of_order) {
+        log("TCP %i: Out of order %u:%u", fd, tcp_seq, them_seq);
         return false;
       }
 
       them_seq += data_size;
 
-      debug("TCP %i: DATA: Sequence: %u (New Expected: %u) Size: %lu", fd, tcp_seq, them_seq, data_size);
+      log("TCP %i: DATA: Sequence: %u (New Expected: %u) Size: %zu", fd, tcp_seq, them_seq, data_size);
 
       if (first_packet) {
         if (should_block(data, data_size, block)) {
-            debug("SNI: Dropping connection\n");
+            log("SNI: Dropping connection\n");
             stats.blocked += 1;
             return_tcp_fin(tun_fd);
             return true;
         }
       }
 
+      //log("%20s", data);
+      //log("ED");
+
       // Send this on to the target
-      char* data = data;
       size_t remaining = data_size;
       while (remaining > 0) {
         ssize_t rd = send(fd, data, remaining, MSG_NOSIGNAL);
+        //debug("Send %li bytes via TCP", rd);
         if (rd < 0) {
-          if (rd == -EAGAIN) {
+          if (errno == EAGAIN || errno == EWOULDBLOCK) {
             continue;
           }
           // TODO: ERROR!
-          debug("Broken outbound stream");
-          return true;
+          debug("Broken outbound stream %i", errno);
+          return_tcp_fin(tun_fd);
+          close_rd = true;
+          break;
         }
         remaining -= rd;
         data += rd;
@@ -172,21 +187,23 @@ public:
     if (tcp_hdr->fin) {
       them_seq += 1;
       shutdown(fd, SHUT_WR);
-      debug("TCP %i: Client has shutdown write half of stream", fd);
+      log("TCP %i: Client has shutdown write half of stream", fd);
       close_wr = true;
       should_ack = true;
     }
 
     // If we have sent a FIN then the final ACK will close the session
     if (tcp_hdr->ack && close_rd) {
-      debug("TCP %i: Stream has acknowledged FIN", fd);
+      log("TCP %i: Stream has acknowledged FIN", fd);
+      ack_rd = true;
+      should_ack = true;
     }
 
     // Both sides are closed
     if (close_wr && ack_rd && close_rd) {
       // Return true -> remove the stream from NAT
-      debug("TCP %i: Both sides of the connection have closed and acknowledged", fd);
-      return true;
+      log("TCP %i: Both sides of the connection have closed and acknowledged", fd);
+      //return true;
     }
 
     if (should_ack) {
@@ -198,7 +215,8 @@ public:
   }
 
   bool on_data(int tun_fd, int epoll_fd, char* data, size_t data_size, struct stats& stats) {
-    debug("TCP: Returning a packet");
+    debug("TCP: %i Returning a packet", fd);
+    //log("Returning %30s", data);
     return_a_tcp_packet(tun_fd, data, data_size, dst);
     stats.tcp_bytes_in += data_size;
     return false;
@@ -213,7 +231,7 @@ public:
       ssize_t ipp_sz;
 
       debug("SYN-ACK numbers %u %u", us_seq, them_seq + 1);
-      size_t pkt_sz = assemble_tcp_packet(ipp, 1500, us_seq++, them_seq + 1, NULL, 0, src, dst, false, true, true, false, false);
+      size_t pkt_sz = assemble_tcp_packet(ipp, 1500, us_seq++, them_seq + 1, NULL, 0, dst, src, false, true, true, false, false);
       DROP_GUARD_RET(pkt_sz > 0, true);
 
       // This failing is fatal for the stream
@@ -244,7 +262,7 @@ public:
 
   static inline void return_tcp_rst(int tun_fd, const sockaddr_in& src, const sockaddr_in& dst) {
     char ipp[MTU];
-    size_t pkt_sz = assemble_tcp_packet(ipp, MTU, 0, 0, nullptr, 0, src, dst, false, false, false, false, true);
+    size_t pkt_sz = assemble_tcp_packet(ipp, MTU, 0, 0, nullptr, 0, dst, src, false, false, false, false, true);
     DROP_GUARD(pkt_sz > 0);
     DROP_GUARD(write(tun_fd, ipp, pkt_sz) >= 0); // TODO: Deal with this failure!!
   }

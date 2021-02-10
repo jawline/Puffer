@@ -66,13 +66,26 @@ struct ip_port_protocol {
     uint8_t proto;
 
     bool operator==(const ip_port_protocol &o) const {
-        return memcmp(this, &o, sizeof(*this)) == 0;
+        return ip == o.ip && src_port == o.src_port && dst_port == o.dst_port && proto == o.proto;
     }
+
+#define CHECK_GUARD(a, b) \
+  if (a < b) { \
+    return true; \
+  } \
+  if (a > b) { \
+    return false; \
+  }
 
     // Impl comparison to allow use in a map
     bool operator<(const ip_port_protocol &o) const {
-        return memcmp(this, &o, sizeof(*this)) < 0;
+        CHECK_GUARD(ip, o.ip);
+        CHECK_GUARD(src_port, o.src_port);
+        CHECK_GUARD(dst_port, o.dst_port);
+        CHECK_GUARD(proto, o.proto);
+        return false;
     }
+#undef CHECK_GUARD
 };
 
 struct stats {

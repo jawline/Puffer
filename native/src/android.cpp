@@ -27,9 +27,7 @@ extern "C" JNIEXPORT void JNICALL Java_com_parsed_securitywall_SecurityFilter_la
 
     debug("Creating event loop");
 
-    EventLoop loop(tunfd, quitfd, b);
-    loop.env = env;
-    loop.swall = service;
+    EventLoop loop(tunfd, quitfd, b, env, service);
 
     debug("Entering proxy");
     loop.user_space_ip_proxy();

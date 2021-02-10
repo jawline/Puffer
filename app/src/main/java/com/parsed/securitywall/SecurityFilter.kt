@@ -22,6 +22,7 @@ class SecurityFilter(service: SecurityService, blockList: String): Thread() {
     external fun launch(fd: Int, quit_fd: Int, blockList: String)
 
     fun protect(fd: Int) {
+        Log.d(TAG, "Protected socket: $fd")
         mService.protect(fd)
     }
 

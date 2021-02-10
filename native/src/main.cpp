@@ -10,6 +10,7 @@
 #include "udp.h"
 #include "tcp.h"
 
+#ifndef __ANDROID__
 int main() {
 
   debug("Manifest piping");
@@ -27,3 +28,4 @@ int main() {
   EventLoop loop(tunfd, fds[0], b);
   loop.user_space_ip_proxy();
 }
+#endif

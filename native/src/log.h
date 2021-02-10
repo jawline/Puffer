@@ -1,29 +1,21 @@
 #ifndef _LGH
 #define _LGH
 
-#ifndef DEBUG
-#define DEBUG 1
+#if defined(__ANDROID__)
+#include <android/log.h>
+#define log(fmt, ...) \
+        do { __android_log_print(ANDROID_LOG_DEBUG, "SecurityWall-Native", "%s:%d:%s(): " fmt "\n", __FILE__, \
+                                __LINE__, __func__, ## __VA_ARGS__); } while (0)
+#else
+#define log(fmt, ...) \
+        do { fprintf(stderr, "%s:%d:%s(): " fmt "\n", __FILE__, \
+                                __LINE__, __func__, ## __VA_ARGS__); } while (0)
 #endif
 
 #if defined(DEBUG)
-
-#if defined(__ANDROID__)
-#include <android/log.h>
-
-#define debug(fmt, ...) \
-        do { if (DEBUG) __android_log_print(ANDROID_LOG_DEBUG, "SecurityWall-Native", "%s:%d:%s(): " fmt "\n", __FILE__, \
-                                __LINE__, __func__, ## __VA_ARGS__); } while (0)
-
+#define debug(fmt, ...) log(fmt, ## __VA_ARGS__)
 #else
-
-#define debug(fmt, ...) \
-        do { if (DEBUG) fprintf(stderr, "%s:%d:%s(): " fmt "\n", __FILE__, \
-                                __LINE__, __func__, ## __VA_ARGS__); } while (0)
-
-#endif
-
-#else
-#define (debug, fmt, ...) do {} while (0)
+#define debug(fmt, ...) do {} while (0)
 #endif
 
 #define DROP_GUARD(e) if (!(e)) { \

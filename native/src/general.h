@@ -28,6 +28,7 @@ private:
 #endif
 
   inline void register_udp(ip_port_protocol const& id, std::shared_ptr<Socket> new_entry) {
+    debug("OUTBOUND NAT %i %i", id.src_port, id.dst_port);
     stat.udp_total += 1;
     outbound_nat[id] = new_entry;
     inbound_nat[new_entry->fd] = new_entry;
@@ -84,7 +85,7 @@ private:
   }
 
   inline void report(size_t udp, size_t tcp, size_t expired) {
-      debug("STATE: UDP: %lu / %lu (%lu / %lu) bytes TCP: %lu / %lu (%lu / %lu) EXPIRED: %lu BLOCKED (THIS SESSION): %lu", udp, stat.udp_total, stat.udp_bytes_in, stat.udp_bytes_out, tcp, stat.tcp_total, stat.tcp_bytes_in, stat.tcp_bytes_out, expired, stat.blocked);
+      debug("STATE: UDP: %zu / %zu (%zu / %zu) bytes TCP: %zu / %zu (%zu / %zu) EXPIRED: %zu BLOCKED (THIS SESSION): %zu", udp, stat.udp_total, stat.udp_bytes_in, stat.udp_bytes_out, tcp, stat.tcp_total, stat.tcp_bytes_in, stat.tcp_bytes_out, expired, stat.blocked);
   #if defined(__ANDROID__)
       jclass secc = (env)->GetObjectClass(swall);
       jmethodID protect = env->GetMethodID(secc,"report", "(JJJJJJJ)V");
@@ -98,10 +99,11 @@ private:
   /// TODO: Figure out how to drive this from android (I think VpnBuilder can take care of it)
   inline void binddev(int fd) {
   #if defined(__ANDROID__)
-      jclass secc = (env)->GetObjectClass(loop.swall);
+      jclass secc = (env)->GetObjectClass(swall);
       jmethodID protect = env->GetMethodID(secc,"protect", "(I)V");
       (env)->CallVoidMethod(swall, protect, fd);
   #else
+    debug("Registered this device!");
     struct ifreq ifr;
     memset(&ifr, 0, sizeof(ifr));
     snprintf(ifr.ifr_name, sizeof(ifr.ifr_name), "wlp2s0");
@@ -168,10 +170,14 @@ private:
     bytes = bytes + sizeof(struct udphdr);
     len -= sizeof(struct udphdr);
 
-    udp_socket->on_tun(tunnel_fd, epoll_fd, (char*) hdr, (char*) udp_hdr, bytes, len, block, stat);
+    if (udp_socket->on_tun(tunnel_fd, epoll_fd, (char*) hdr, (char*) udp_hdr, bytes, len, block, stat)) {
+      remove_fd_from_nat(fd_scan->second->fd);
+    }
   }
 
   inline void process_packet_tcp(struct ip* hdr, char* bytes, size_t len) {
+    debug("TCP: Lookup %zu", len);
+
     DROP_GUARD(len >= sizeof(struct tcphdr));
     struct tcphdr* tcp_hdr = (struct tcphdr *) bytes;
     struct ip_port_protocol id = ip_port_protocol { hdr->daddr, tcp_hdr->source, tcp_hdr->dest, IPPROTO_TCP };
@@ -182,17 +188,27 @@ private:
     auto fd_scan = outbound_nat.find(id);
     int found_fd;
 
+    for (auto it : outbound_nat) {
+        debug("NAT entry list: %s %i %i %i", inet_ntoa(in_addr { it.first.ip }), it.first.src_port, it.first.dst_port, it.first.proto);
+    }
+
     if (fd_scan != outbound_nat.end()) {
 
       // TODO: Guards!
       char* data_start = bytes + (tcp_hdr->doff << 2);
       size_t data_size = ntohs(hdr->len) - sizeof(ip) - (tcp_hdr->doff << 2);
-      fd_scan->second->on_tun(tunnel_fd, epoll_fd, (char*) hdr, (char*) tcp_hdr, data_start, data_size, block, stat);
+
+      log("TCP: Message %zu bytes", data_size);
+
+      if (fd_scan->second->on_tun(tunnel_fd, epoll_fd, (char*) hdr, (char*) tcp_hdr, data_start, data_size, block, stat)) {
+        log("TCP: on_tun requested %i be removed from NAT", fd_scan->second->fd);
+        remove_fd_from_nat(fd_scan->second->fd);
+      }
     } else {
       // Oooh, this might be a new TCP connection. We need to figure that out (is it a SYN)
-
       // If this is not the SYN first packet then something is wrong. send an RST and drop
       if (!(tcp_hdr->syn && !tcp_hdr->ack)) {
+        debug("TCP: Not initial SYN %i %i %i", tcp_hdr->syn, tcp_hdr->ack, tcp_hdr->fin);
         TcpStream::return_tcp_rst(tunnel_fd, generate_addr(hdr->saddr, tcp_hdr->source), generate_addr(hdr->daddr, tcp_hdr->dest));
         return;
       }
@@ -214,7 +230,6 @@ private:
       DROP_GUARD(connect(new_fd, (sockaddr*) &dst, sizeof(dst)));
 
       auto tcp_socket = std::shared_ptr<Socket>(new TcpStream(new_fd, generate_addr(hdr->saddr, tcp_hdr->source), generate_addr(hdr->daddr, tcp_hdr->dest), IPPROTO_TCP, ntohl(tcp_hdr->seq)));
-
       register_tcp(id, tcp_socket);
     }
   }
@@ -233,11 +248,11 @@ private:
     struct ip* hdr = (struct ip*) bytes;
 
     // TODO: Add IPv6 later once we get this IPv4 thing worked out
-    debug("IP HDR Version: %i %i", hdr->version, hdr->ihl);
+    debug("IP HDR Version: %i %i %i", hdr->version, hdr->ihl, hdr->proto);
     DROP_GUARD(hdr->version == 4);
 
-    char* rest = bytes + sizeof(struct ip);
-    len -= sizeof(struct ip);
+    char* rest = bytes + (hdr->ihl << 2);
+    len -= (hdr->ihl << 2);
 
     switch (hdr->proto) {
       case IPPROTO_ICMP: {
@@ -280,29 +295,41 @@ private:
   }
 
   inline void on_network_event(epoll_event const& event, timespec const& cur_time) {
+    debug("Network socket event");
     auto event_fd = event.data.fd;
     auto events = event.events;
     auto fd_scan = inbound_nat.find(event_fd);
     if (fd_scan != inbound_nat.end()) {
+      debug("Epoll Scan");
+      debug("Check");
       if (events & EPOLLIN) {
+        debug("Epollin");
         char buf[MTU];
         sockaddr_in addr;
         socklen_t addr_len = sizeof(addr);
-        ssize_t len = recvfrom(event_fd, buf, 1350, 0, (sockaddr *) &addr, &addr_len);
 
-        DROP_GUARD(len > 0);
+        while (true) {
+          ssize_t len = recvfrom(fd_scan->second->fd, buf, 1350, 0, (sockaddr *) &addr, &addr_len);
 
-        debug("READ: %i SZ: %lu", event_fd, len);
-        auto proto = fd_scan->second->proto;
-        fd_scan->second->last_use = cur_time;
+          debug("READ: %i SZ: %li", event_fd, len);
 
-        if (!fd_scan->second->on_data(tunnel_fd, epoll_fd, buf, len, stat)) {
-          remove_fd_from_nat(event_fd);
-          return;
+          if (len <= 0) {
+            break;
+          }
+
+          auto proto = fd_scan->second->proto;
+          fd_scan->second->last_use = cur_time;
+
+          if (fd_scan->second->on_data(tunnel_fd, epoll_fd, buf, len, stat)) {
+            log("SOCK: %i asked to be removed from NAT", fd_scan->second->fd);
+            remove_fd_from_nat(event_fd);
+            return;
+          }
         }
       }
 
-      if (!fd_scan->second->on_sock(tunnel_fd, epoll_fd, events, stat)) {
+      if (fd_scan->second->on_sock(tunnel_fd, epoll_fd, events, stat)) {
+        log("SOCK: %i asked to be removed from NAT", fd_scan->second->fd);
         remove_fd_from_nat(event_fd);
         return;
       }
@@ -314,7 +341,11 @@ private:
 
 public:
 
+#if defined(__ANDROID__)
+  EventLoop(int tunnel_fd, int quit_fd, BlockList const& list, JNIEnv *env, jobject swall): tunnel_fd(tunnel_fd), quit_fd(quit_fd), block(list), env(env), swall(swall) {
+#else
   EventLoop(int tunnel_fd, int quit_fd, BlockList const& list): tunnel_fd(tunnel_fd), quit_fd(quit_fd), block(list) {
+#endif
     stat = { 0 };
 
     epoll_fd = epoll_create(5);
