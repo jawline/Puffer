@@ -1,5 +1,8 @@
 #ifndef SECURITYWALL_TCP_H
 #define SECURITYWALL_TCP_H
+#include "packet.h"
+#include "util.h"
+#include "log.h"
 #include "socket.h"
 #include "tls.h"
 
