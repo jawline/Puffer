@@ -2,7 +2,7 @@
 #define _UTIL
 #include "network.h"
 
-static inline ssize_t tun_write(int tun_fd, char* pkt, size_t pkt_sz) {
+static inline ssize_t tun_write(int tun_fd, char *pkt, size_t pkt_sz) {
   ssize_t r;
 
   while (true) {
@@ -34,7 +34,7 @@ static inline void set_fast_tcp(int fd) {
 }
 
 static inline void listen_tcp(int epoll_fd, int fd) {
-  struct epoll_event event = { 0 };
+  struct epoll_event event = {0};
 
   event.events = EPOLLIN | EPOLLHUP | EPOLLRDHUP;
   event.data.fd = fd;
@@ -47,23 +47,24 @@ static inline void stop_listen(int epoll_fd, int fd) {
 }
 
 static inline void clear_timerfd(int timer_fd) {
-  // We need to read the number of timer expirations from the timer_fd to make it shut up.
+  // We need to read the number of timer expirations from the timer_fd to make
+  // it shut up.
   uint64_t time_read;
   if (read(timer_fd, &time_read, sizeof(time_read)) < 0) {
     printf("Cannot clear the timer\n");
   }
 }
 
-static inline sockaddr_in lookup_dst_udp(ip* hdr, udphdr* udp_hdr) {
-  struct sockaddr_in dst = { 0 };
+static inline sockaddr_in lookup_dst_udp(ip *hdr, udphdr *udp_hdr) {
+  struct sockaddr_in dst = {0};
   dst.sin_family = AF_INET;
   dst.sin_addr.s_addr = hdr->daddr;
   dst.sin_port = udp_hdr->uh_dport;
   return dst;
 }
 
-static inline sockaddr_in lookup_dst_tcp(ip* hdr, tcphdr* tcp_hdr) {
-  struct sockaddr_in dst = { 0 };
+static inline sockaddr_in lookup_dst_tcp(ip *hdr, tcphdr *tcp_hdr) {
+  struct sockaddr_in dst = {0};
   dst.sin_family = AF_INET;
   dst.sin_addr.s_addr = hdr->daddr;
   dst.sin_port = tcp_hdr->dest;
@@ -71,7 +72,7 @@ static inline sockaddr_in lookup_dst_tcp(ip* hdr, tcphdr* tcp_hdr) {
 }
 
 static inline sockaddr_in generate_addr(uint32_t ip, uint16_t port) {
-  struct sockaddr_in addr = { 0 };
+  struct sockaddr_in addr = {0};
   addr.sin_family = AF_INET;
   addr.sin_addr.s_addr = ip;
   addr.sin_port = port;

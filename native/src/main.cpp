@@ -1,14 +1,14 @@
-#include "general.h"
 #include "checksum.h"
-#include "tun.h"
-#include "util.h"
-#include "packet.h"
+#include "general.h"
 #include "log.h"
-#include "tls.h"
-#include <sys/timerfd.h>
-#include <arpa/inet.h>
-#include "udp.h"
+#include "packet.h"
 #include "tcp.h"
+#include "tls.h"
+#include "tun.h"
+#include "udp.h"
+#include "util.h"
+#include <arpa/inet.h>
+#include <sys/timerfd.h>
 
 #ifndef __ANDROID__
 int main() {
@@ -21,7 +21,7 @@ int main() {
   int tunfd = tun_alloc("blaketest", IFF_TUN | IFF_NO_PI);
 
   debug("Loading block list");
-  FILE* blist = fopen("lists/base.txt", "r");
+  FILE *blist = fopen("lists/base.txt", "r");
   BlockList b(blist);
 
   debug("Creating event loop");
