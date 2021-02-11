@@ -23,8 +23,11 @@ private:
   BlockList block;
 
 #if defined(__ANDROID__)
-  JNIEnv *env;
-  jobject swall;
+  JNIEnv *jni_env;
+  jobject jni_service;
+  jclass jni_service_class;
+  jmethodID protect;
+  jmethodID report;
 #endif
 
   inline void register_udp(ip_port_protocol const& id, std::shared_ptr<Socket> new_entry) {
@@ -87,9 +90,7 @@ private:
   inline void report(size_t udp, size_t tcp, size_t expired) {
       debug("STATE: UDP: %zu / %zu (%zu / %zu) bytes TCP: %zu / %zu (%zu / %zu) EXPIRED: %zu BLOCKED (THIS SESSION): %zu", udp, stat.udp_total, stat.udp_bytes_in, stat.udp_bytes_out, tcp, stat.tcp_total, stat.tcp_bytes_in, stat.tcp_bytes_out, expired, stat.blocked);
   #if defined(__ANDROID__)
-      jclass secc = (env)->GetObjectClass(swall);
-      jmethodID protect = env->GetMethodID(secc,"report", "(JJJJJJJ)V");
-      (env)->CallVoidMethod(swall, protect, (jlong) tcp, (jlong) stat.tcp_total, (jlong) udp, (jlong) stat.udp_total, (jlong) (stat.tcp_bytes_in + stat.udp_bytes_in), (jlong) (stat.tcp_bytes_out + stat.udp_bytes_out), (jlong) stat.blocked);
+      jni_env->CallVoidMethod(jni_service, report, (jlong) tcp, (jlong) stat.tcp_total, (jlong) udp, (jlong) stat.udp_total, (jlong) (stat.tcp_bytes_in + stat.udp_bytes_in), (jlong) (stat.tcp_bytes_out + stat.udp_bytes_out), (jlong) stat.blocked);
   #else
   #endif
   }
@@ -99,9 +100,7 @@ private:
   /// TODO: Figure out how to drive this from android (I think VpnBuilder can take care of it)
   inline void binddev(int fd) {
   #if defined(__ANDROID__)
-      jclass secc = (env)->GetObjectClass(swall);
-      jmethodID protect = env->GetMethodID(secc,"protect", "(I)V");
-      (env)->CallVoidMethod(swall, protect, fd);
+      jni_env->CallVoidMethod(jni_service, protect, fd);
   #else
     debug("Registered this device!");
     struct ifreq ifr;
@@ -121,23 +120,29 @@ private:
     // Now expire any session that has been around too long
     auto it = inbound_nat.begin();
     while (it != inbound_nat.end()) {
-      auto tgt = it++;
-      auto proto = tgt->second->proto;
 
-      if (proto == IPPROTO_TCP) {
-        tcp += 1;
-      } else if (proto == IPPROTO_UDP) {
-        udp += 1;
-        uint64_t age = cur_time.tv_sec - (*tgt).second->last_use.tv_sec;
-        // UDP sessions don't die, we just evict the NAT mapping after 30s
-        if (age > 30) {
-          int target_fd = tgt->second->fd;
-          cleanup_removed_fd(target_fd);
-          inbound_nat.erase(tgt);
-          expired += 1;
-        }
+      // Iterate the iterator first but keep a handle on the old one.
+      // this allows us to erase and continue looping
+      auto tgt = it++;
+      auto socket = tgt->second;
+
+      switch (socket->proto) {
+        case IPPROTO_TCP:
+          tcp += 1;
+          break;
+        case IPPROTO_UDP:
+          udp += 1;
+          uint64_t age = cur_time.tv_sec - socket->last_use.tv_sec;
+          // UDP sessions don't die, we just evict the NAT mapping after 30s of inactivity
+          if (age > UDP_NAT_TIMEOUT_SECONDS) {
+            cleanup_removed_fd(socket->fd);
+            inbound_nat.erase(tgt);
+            expired += 1;
+          }
+          break;
       }
     }
+
     report(udp, tcp, expired);
   }
 
@@ -251,8 +256,12 @@ private:
     debug("IP HDR Version: %i %i %i", hdr->version, hdr->ihl, hdr->proto);
     DROP_GUARD(hdr->version == 4);
 
-    char* rest = bytes + (hdr->ihl << 2);
-    len -= (hdr->ihl << 2);
+    size_t ip_header_size_bytes = hdr->ihl << 2;
+
+    DROP_GUARD(ip_header_size_bytes >= IP_HEADER_MIN_SIZE);
+
+    char* rest = bytes + ip_header_size_bytes;
+    len -= ip_header_size_bytes;
 
     switch (hdr->proto) {
       case IPPROTO_ICMP: {
@@ -294,46 +303,56 @@ private:
     do_nat_cleanup(cur_time);
   }
 
+  inline void socket_on_network_event(int events, timespec const& cur_time, std::shared_ptr<Socket> const& socket) {
+    bool should_remove = false;
+
+    if (events & EPOLLIN) {
+      debug("SOCK: %i awaiting data", socket->fd);
+
+      char buf[MTU];
+      sockaddr_in addr;
+      socklen_t addr_len = sizeof(addr);
+
+      while (true) {
+        ssize_t len = recvfrom(socket->fd, buf, 1350, 0, (sockaddr *) &addr, &addr_len);
+
+        debug("SOCK: %i read sz: %li", socket->fd, len);
+
+        if (len <= 0) {
+          break;
+        }
+
+        if (socket->on_data(tunnel_fd, epoll_fd, buf, len, stat)) {
+          log("SOCK: %i on-data requests NAT kill", socket->fd);
+          should_remove = true;
+          break;
+        }
+      }
+
+      // Update the last-use time
+      socket->last_use = cur_time;
+    }
+
+    if (socket->on_sock(tunnel_fd, epoll_fd, events, stat)) {
+      log("SOCK: %i on-sock requests NAT kill", socket->fd);
+      should_remove = true;
+    }
+
+    if (should_remove) {
+      log("SOCK: %i removed from NAT", socket->fd);
+      remove_fd_from_nat(socket->fd);
+    }
+  }
+
   inline void on_network_event(epoll_event const& event, timespec const& cur_time) {
     debug("Network socket event");
     auto event_fd = event.data.fd;
     auto events = event.events;
     auto fd_scan = inbound_nat.find(event_fd);
     if (fd_scan != inbound_nat.end()) {
-      debug("Epoll Scan");
-      debug("Check");
-      if (events & EPOLLIN) {
-        debug("Epollin");
-        char buf[MTU];
-        sockaddr_in addr;
-        socklen_t addr_len = sizeof(addr);
-
-        while (true) {
-          ssize_t len = recvfrom(fd_scan->second->fd, buf, 1350, 0, (sockaddr *) &addr, &addr_len);
-
-          debug("READ: %i SZ: %li", event_fd, len);
-
-          if (len <= 0) {
-            break;
-          }
-
-          auto proto = fd_scan->second->proto;
-          fd_scan->second->last_use = cur_time;
-
-          if (fd_scan->second->on_data(tunnel_fd, epoll_fd, buf, len, stat)) {
-            log("SOCK: %i asked to be removed from NAT", fd_scan->second->fd);
-            remove_fd_from_nat(event_fd);
-            return;
-          }
-        }
-      }
-
-      if (fd_scan->second->on_sock(tunnel_fd, epoll_fd, events, stat)) {
-        log("SOCK: %i asked to be removed from NAT", fd_scan->second->fd);
-        remove_fd_from_nat(event_fd);
-        return;
-      }
-
+      auto socket = fd_scan->second;
+      debug("Found %i in NAT", second->fd);
+      socket_on_network_event(events, cur_time, socket);
     } else {
       debug("ERROR: Missing entry in NAT!?");
     }
@@ -342,7 +361,7 @@ private:
 public:
 
 #if defined(__ANDROID__)
-  EventLoop(int tunnel_fd, int quit_fd, BlockList const& list, JNIEnv *env, jobject swall): tunnel_fd(tunnel_fd), quit_fd(quit_fd), block(list), env(env), swall(swall) {
+  EventLoop(int tunnel_fd, int quit_fd, BlockList const& list, JNIEnv *jni_env, jobject jni_service): tunnel_fd(tunnel_fd), quit_fd(quit_fd), block(list), jni_env(jni_env), jni_service(jni_service) {
 #else
   EventLoop(int tunnel_fd, int quit_fd, BlockList const& list): tunnel_fd(tunnel_fd), quit_fd(quit_fd), block(list) {
 #endif
@@ -353,6 +372,12 @@ public:
 
     fatal_guard(epoll_fd);
     fatal_guard(timer_fd);
+
+#if defined(__ANDROID__)
+    jni_service_class = (jni_env)->GetObjectClass(jni_service);
+    report = jni_env->GetMethodID(jni_service_class,"report", "(JJJJJJJ)V");
+    protect = jni_env->GetMethodID(jni_service_class,"protect", "(I)V");
+#endif
 
     debug("Epoll FD: %i", epoll_fd);
   }

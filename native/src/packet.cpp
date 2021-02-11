@@ -19,9 +19,6 @@ void assemble_ip_header(ip* ip_hdr, uint8_t protocol, const sockaddr_in& sender,
   // Must be zero to start
   ip_hdr->csum = 0;
   ip_hdr->csum = wrapsum(checksum((uint8_t *) ip_hdr, ip_hdr->ihl << 2, 0));
-  //debug("CSUM: %x", ip_hdr->csum);
-  //debug("Return Address: %i", return_addr.sin_addr.s_addr);
-  //debug("Packet Length: %li (%i)", packet_len, ip_hdr->len);
 }
 
 void assemble_udp_header(const ip* ip, udphdr* udp, size_t datagram_contents_size, const sockaddr_in& sender, const sockaddr_in& destination) {
@@ -39,8 +36,6 @@ void assemble_udp_header(const ip* ip, udphdr* udp, size_t datagram_contents_siz
       IPPROTO_UDP + (uint32_t)ntohs(udp->len)))));
 
   udp->check = sum;
-
-  //debug("UDP CHECK: %x\n", udp->check);
 }
 
 uint16_t checksum(const ip* ip, uint8_t* header, size_t header_len, uint8_t* data, size_t data_len, uint8_t proto, uint32_t len) {
@@ -79,8 +74,6 @@ void assemble_tcp_header(const ip* ip, tcphdr* tcp, uint32_t seq, uint32_t ack, 
       ip->proto + (uint32_t)(ntohs(ip->len) - sizeof(*ip))))));
 
   tcp->check = sum;
-
-  //debug("TCP CHECK: %x", tcp->check);
 }
 
 ssize_t assemble_udp_packet(char* out, size_t mtu, char* data, size_t len, const sockaddr_in& src, const sockaddr_in& dst) {

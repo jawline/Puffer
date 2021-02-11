@@ -34,7 +34,9 @@
 #include "block_list.h"
 
 #define MTU 1500
-#define MAX_EVENTS 500
+#define MAX_EVENTS 20
+#define IP_HEADER_MIN_SIZE (5 << 2)
+#define UDP_NAT_TIMEOUT_SECONDS 30
 
 #define MAX(a, b) ((a > b) ? a : b)
 
