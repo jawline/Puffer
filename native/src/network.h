@@ -32,27 +32,29 @@
 #include <time.h>
 #include <unistd.h>
 
-#define MTU 1500
-#define MAX_EVENTS 20
-#define IP_HEADER_MIN_SIZE (5 << 2)
-#define UDP_NAT_TIMEOUT_SECONDS 30
-
-#define MAX(a, b) ((a > b) ? a : b)
-
-#define fatal_guard(r)                                                         \
-  if (r < 0) {                                                                 \
-    debug("Guard violated");                                                   \
-    exit(1);                                                                   \
-  }
+const static size_t MTU = 1500;
+const static size_t MAX_EVENTS = 20;
+const static size_t IP_HEADER_MIN_SIZE = (5 << 2);
+const static size_t UDP_NAT_TIMEOUT_SECONDS = 30;
 
 struct ip {
+#if defined(__LITTLE_ENDIAN_BITFIELD)
   uint8_t ihl : 4;
   uint8_t version : 4;
+#else
+  uint8_t version : 4;
+  uint8_t ihl : 4;
+#endif
   uint8_t tos;
   uint16_t len;
   uint16_t id;
+#if defined(__LITTLE_ENDIAN_BITFIELD)
   uint16_t flags : 3;
   uint16_t frag_offset : 13;
+#else
+  uint16_t frag_offset : 13;
+  uint16_t flags : 3;
+#endif
   uint8_t ttl;
   uint8_t proto;
   uint16_t csum;
@@ -71,6 +73,8 @@ struct ip_port_protocol {
            proto == o.proto;
   }
 
+  // Impl comparison to allow use in a map
+  bool operator<(const ip_port_protocol &o) const {
 #define CHECK_GUARD(a, b)                                                      \
   if (a < b) {                                                                 \
     return true;                                                               \
@@ -78,16 +82,13 @@ struct ip_port_protocol {
   if (a > b) {                                                                 \
     return false;                                                              \
   }
-
-  // Impl comparison to allow use in a map
-  bool operator<(const ip_port_protocol &o) const {
     CHECK_GUARD(ip, o.ip);
     CHECK_GUARD(src_port, o.src_port);
     CHECK_GUARD(dst_port, o.dst_port);
     CHECK_GUARD(proto, o.proto);
+#undef CHECK_GUARD
     return false;
   }
-#undef CHECK_GUARD
 };
 
 struct stats {

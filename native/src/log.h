@@ -43,4 +43,13 @@
     return r;                                                                  \
   }
 
+template<typename T>
+static inline T fatal_guard(T r) {
+  if (r < 0) {
+    debug("Guard violated");
+    abort();
+  }
+  return r;
+}
+
 #endif

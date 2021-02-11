@@ -31,7 +31,7 @@ private:
 
   inline void register_udp(ip_port_protocol const &id,
                            std::shared_ptr<Socket> new_entry) {
-    debug("OUTBOUND NAT %i %i", id.src_port, id.dst_port);
+    debug("UDP: New NAT %i %i\n", id.src_port, id.dst_port);
     stat.udp_total += 1;
     outbound_nat[id] = new_entry;
     inbound_nat[new_entry->fd] = new_entry;
@@ -40,6 +40,7 @@ private:
 
   inline void register_tcp(ip_port_protocol const &id,
                            std::shared_ptr<Socket> new_entry) {
+    debug("TCP: New NAT %i %i\n", id.src_port, id.dst_port);
     stat.tcp_total += 1;
     outbound_nat[id] = new_entry;
     inbound_nat[new_entry->fd] = new_entry;
@@ -88,11 +89,13 @@ private:
   }
 
   inline void report(size_t udp, size_t tcp, size_t expired) {
+
     debug("STATE: UDP: %zu / %zu (%zu / %zu) bytes TCP: %zu / %zu (%zu / %zu) "
           "EXPIRED: %zu BLOCKED (THIS SESSION): %zu",
           udp, stat.udp_total, stat.udp_bytes_in, stat.udp_bytes_out, tcp,
           stat.tcp_total, stat.tcp_bytes_in, stat.tcp_bytes_out, expired,
           stat.blocked);
+
 #if defined(__ANDROID__)
     jni_env->CallVoidMethod(
       jni_service, report, (jlong)tcp, (jlong)stat.tcp_total, (jlong)udp,
@@ -109,7 +112,6 @@ private:
 #if defined(__ANDROID__)
     jni_env->CallVoidMethod(jni_service, protect, fd);
 #else
-    debug("Registered this device!");
     struct ifreq ifr;
     memset(&ifr, 0, sizeof(ifr));
     snprintf(ifr.ifr_name, sizeof(ifr.ifr_name), "wlp2s0");
@@ -156,8 +158,7 @@ private:
   inline void process_packet_udp(struct ip *hdr, char *bytes, size_t len) {
     DROP_GUARD(len >= sizeof(struct udphdr));
     struct udphdr *udp_hdr = (struct udphdr *)bytes;
-    struct ip_port_protocol id = ip_port_protocol{
-      hdr->daddr, udp_hdr->uh_sport, udp_hdr->uh_dport, IPPROTO_UDP};
+    struct ip_port_protocol id = ip_port_protocol { hdr->daddr, udp_hdr->uh_sport, udp_hdr->uh_dport, IPPROTO_UDP };
 
     auto fd_scan = outbound_nat.find(id);
     std::shared_ptr<Socket> udp_socket;
@@ -191,24 +192,18 @@ private:
     }
   }
 
-  inline void process_packet_tcp(struct ip *hdr, char *bytes, size_t len) {
-    debug("TCP: Lookup %zu", len);
+  inline void process_packet_tcp(struct ip *hdr, char *bytes, size_t len) {;
 
     DROP_GUARD(len >= sizeof(struct tcphdr));
     struct tcphdr *tcp_hdr = (struct tcphdr *)bytes;
-    struct ip_port_protocol id =
-      ip_port_protocol{hdr->daddr, tcp_hdr->source, tcp_hdr->dest, IPPROTO_TCP};
+    struct ip_port_protocol id = ip_port_protocol{hdr->daddr, tcp_hdr->source, tcp_hdr->dest, IPPROTO_TCP};
 
+    debug("TCP %i %i %i %i", tcp_hdr->syn, tcp_hdr->ack, tcp_hdr->fin, tcp_hdr->rst);
     debug("Source: %s %i", inet_ntoa(in_addr{hdr->saddr}), tcp_hdr->source);
     debug("Dest: %s %i", inet_ntoa(in_addr{hdr->daddr}), tcp_hdr->dest);
 
     auto fd_scan = outbound_nat.find(id);
     int found_fd;
-
-    for (auto it : outbound_nat) {
-      debug("NAT entry list: %s %i %i %i", inet_ntoa(in_addr{it.first.ip}),
-            it.first.src_port, it.first.dst_port, it.first.proto);
-    }
 
     if (fd_scan != outbound_nat.end()) {
 
@@ -221,17 +216,21 @@ private:
       if (fd_scan->second->on_tun(tunnel_fd, epoll_fd, (char *)hdr,
                                   (char *)tcp_hdr, data_start, data_size, block,
                                   stat)) {
-        log("TCP: on_tun requested %i be removed from NAT",
-            fd_scan->second->fd);
+        log("TCP: on_tun requested %i be removed from NAT", fd_scan->second->fd);
         remove_fd_from_nat(fd_scan->second->fd);
       }
     } else {
+
       // Oooh, this might be a new TCP connection. We need to figure that out
       // (is it a SYN) If this is not the SYN first packet then something is
       // wrong. send an RST and drop
       if (!(tcp_hdr->syn && !tcp_hdr->ack)) {
         debug("TCP: Not initial SYN %i %i %i", tcp_hdr->syn, tcp_hdr->ack,
               tcp_hdr->fin);
+        for (auto it : outbound_nat) {
+          debug("NAT entry list: %s %i %i %i", inet_ntoa(in_addr{it.first.ip}),
+                it.first.src_port, it.first.dst_port, it.first.proto);
+        }
         TcpStream::return_tcp_rst(tunnel_fd,
                                   generate_addr(hdr->saddr, tcp_hdr->source),
                                   generate_addr(hdr->daddr, tcp_hdr->dest));
@@ -247,7 +246,7 @@ private:
       binddev(new_fd);
       set_nonblocking(new_fd);
       set_fast_tcp(new_fd);
-      debug("New FD: %i %i", new_fd, new_fd >= 0);
+      debug("New FD: %i %i", new_fd);
       DROP_GUARD(new_fd >= 0);
 
       auto dst = lookup_dst_tcp(hdr, tcp_hdr);
@@ -314,7 +313,7 @@ private:
   }
 
   inline void on_tun_in() {
-    char bytes[MTU] = {0};
+    char bytes[MTU];
     ssize_t readb;
     while ((readb = read(tunnel_fd, bytes, MTU)) > 0) {
       process_tun_packet(bytes, readb);
@@ -447,7 +446,6 @@ public:
     clock_gettime(CLOCK_MONOTONIC, &fin_time);
   }
 }
-}
-;
+};
 
 #endif
