@@ -3,23 +3,6 @@
 #include "socket.h"
 #include "tls.h"
 
-static inline ssize_t tun_write(int tun_fd, char* pkt, size_t pkt_sz) {
-  ssize_t r;
-  while (true) {
-    r = write(tun_fd, pkt, pkt_sz);
-    if (r == -1) {
-        if (errno == EAGAIN) {
-            log("TCP: TUN Write blocked");
-        } else {
-            log("TCP: Tun write %i", errno);
-        }
-    } else {
-        break;
-    }
-  }
-  return r;
-}
-
 class TcpStream: public Socket {
 private:
   uint32_t them_seq;
@@ -38,32 +21,29 @@ private:
 
   bool first_packet;
 
-  void return_a_tcp_packet(int tun_fd, char* data, size_t len, const sockaddr_in& addr) {
-
-    debug("Source: %s %i", inet_ntoa(in_addr { addr.sin_addr.s_addr }), addr.sin_port);
+  inline bool return_packet(int tun_fd, char* data, size_t len, bool syn, bool ack, bool fin) {
+    debug("Source: %s %i", inet_ntoa(in_addr { dst.sin_addr.s_addr }), dst.sin_port);
     debug("Dest: %s %i", inet_ntoa(in_addr { src.sin_addr.s_addr }), src.sin_port);
 
-    char ipp[MTU];
-    size_t pkt_sz = assemble_tcp_packet(ipp, MTU, us_seq, them_seq + 1, data, len, dst, src, false, false, true, false, false);
+    char packet_buffer[MTU];
+    size_t pkt_size = assemble_tcp_packet(packet_buffer, MTU, us_seq, them_seq + 1, data, len, dst, src, false, syn, ack, fin, false);
+
+    DROP_GUARD_RET(pkt_size > 0, false);
+    DROP_GUARD_RET(tun_write(tun_fd, packet_buffer, pkt_size) == pkt_size, false);
 
     us_seq += len;
 
-    DROP_GUARD(pkt_sz > 0);
-
-    // TODO: This failing is fatal for the stream
-    // But we currently won't fail gracefully
-    DROP_GUARD(tun_write(tun_fd, ipp, pkt_sz) == pkt_sz);
+    return true;
   }
 
-  void return_tcp_fin(int tun_fd) {
+  inline bool return_a_tcp_packet(int tun_fd, char* data, size_t len, const sockaddr_in& addr) {
+    return return_packet(tun_fd, data, len, false, true, close_rd);
+  }
 
-    char ipp[MTU];
-    size_t pkt_sz = assemble_tcp_packet(ipp, MTU, us_seq++, them_seq + 1, NULL, 0, dst, src, false, false, true, true, false);
-    DROP_GUARD(pkt_sz > 0);
-
-    // TODO: This failing is fatal for the stream
-    // But we currently won't fail gracefully
-    DROP_GUARD(tun_write(tun_fd, ipp, pkt_sz) == pkt_sz);
+  inline bool return_tcp_fin(int tun_fd) {
+    bool res = return_packet(tun_fd, nullptr, 0, false, true, true);
+    us_seq++;
+    return res;
   }
 
 public:
@@ -226,16 +206,10 @@ public:
 
     if (events & EPOLLOUT) {
       debug("TCP Connected - it's TIME TO SEND A SYN-ACK");
-
-      char ipp[1500];
-      ssize_t ipp_sz;
-
       debug("SYN-ACK numbers %u %u", us_seq, them_seq + 1);
-      size_t pkt_sz = assemble_tcp_packet(ipp, 1500, us_seq++, them_seq + 1, NULL, 0, dst, src, false, true, true, false, false);
-      DROP_GUARD_RET(pkt_sz > 0, true);
 
-      // This failing is fatal for the stream
-      DROP_GUARD_RET(tun_write(tun_fd, ipp, pkt_sz) == pkt_sz, true);
+      DROP_GUARD_RET(return_packet(tun_fd, nullptr, 0, true, true, false), true);
+      us_seq++;
 
       // After sending a SYN-ACK we expect an ACK. Don't touch the REMOTE SOCKET until then
       stop_listen(epoll_fd, fd);
@@ -243,18 +217,12 @@ public:
     }
 
     if (events & (EPOLLHUP | EPOLLRDHUP)) {
-      debug("TCP closed - it's time to SEND A FIN");
-
-      // Fabricate a FIN
-      char ipp[1500];
-      ssize_t ipp_sz;
-
       debug("TCP %i: Upstream closed. Generating FIN with SYN-ACK numbers %u %u", fd, us_seq, them_seq + 1);
       return_tcp_fin(tun_fd);
 
       // On the next ACK we actually clean up since we expect an ACK before the session is fully closed
       close_rd = true;
-      stop_listen(epoll_fd, fd); 
+      stop_listen(epoll_fd, fd);
     }
 
     return false;
@@ -264,7 +232,7 @@ public:
     char ipp[MTU];
     size_t pkt_sz = assemble_tcp_packet(ipp, MTU, 0, 0, nullptr, 0, dst, src, false, false, false, false, true);
     DROP_GUARD(pkt_sz > 0);
-    DROP_GUARD(write(tun_fd, ipp, pkt_sz) >= 0); // TODO: Deal with this failure!!
+    DROP_GUARD(tun_write(tun_fd, ipp, pkt_sz) >= 0);
   }
 };
 

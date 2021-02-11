@@ -2,6 +2,25 @@
 #define _UTIL
 #include "network.h"
 
+static inline ssize_t tun_write(int tun_fd, char* pkt, size_t pkt_sz) {
+  ssize_t r;
+
+  while (true) {
+    r = write(tun_fd, pkt, pkt_sz);
+    if (r == -1) {
+      if (errno == EAGAIN) {
+        log("TCP: TUN Write blocked");
+      } else {
+        log("TCP: Tun write %i", errno);
+      }
+    } else {
+      break;
+    }
+  }
+
+  return r;
+}
+
 static inline void set_nonblocking(int fd) {
   int flags = fcntl(fd, F_GETFL);
   fatal_guard(flags);
