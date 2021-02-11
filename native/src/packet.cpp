@@ -68,11 +68,16 @@ void assemble_tcp_header(const ip *ip, tcphdr *tcp, uint32_t seq, uint32_t ack,
 
   // debug("SEQ: %u (%u) ACK: %u (%u)", seq, tcp->seq, ack, tcp->ack);
 
-  if (pshf) tcp->psh = 1;
-  if (synf) tcp->syn = 1;
-  if (ackf) tcp->ack = 1;
-  if (finf) tcp->fin = 1;
-  if (rstf) tcp->rst = 1;
+  if (pshf)
+    tcp->psh = 1;
+  if (synf)
+    tcp->syn = 1;
+  if (ackf)
+    tcp->ack = 1;
+  if (finf)
+    tcp->fin = 1;
+  if (rstf)
+    tcp->rst = 1;
 
   // Calculate the UDP checksum
   // Must be zero to start
