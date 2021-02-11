@@ -1,10 +1,10 @@
 #ifndef SECURITYWALL_TCP_H
 #define SECURITYWALL_TCP_H
-#include "packet.h"
-#include "util.h"
 #include "log.h"
+#include "packet.h"
 #include "socket.h"
 #include "tls.h"
+#include "util.h"
 
 class TcpStream : public Socket {
 private:
