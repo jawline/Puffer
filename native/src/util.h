@@ -34,6 +34,7 @@ static inline void set_fast_tcp(int fd) {
 }
 
 static inline void listen_tcp(int epoll_fd, int fd) {
+  debug("Listen %i EPOLLIN | EPOLLHUP | EPOLLRDHUP");
   struct epoll_event event = {0};
 
   event.events = EPOLLIN | EPOLLHUP | EPOLLRDHUP;
@@ -43,7 +44,8 @@ static inline void listen_tcp(int epoll_fd, int fd) {
 }
 
 static inline void stop_listen(int epoll_fd, int fd) {
-  fatal_guard(epoll_ctl(epoll_fd, EPOLL_CTL_DEL, fd, nullptr));
+  debug("Stop listening %i %i\n", epoll_fd, fd);
+  epoll_ctl(epoll_fd, EPOLL_CTL_DEL, fd, nullptr);
 }
 
 static inline void clear_timerfd(int timer_fd) {

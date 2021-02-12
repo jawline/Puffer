@@ -8,8 +8,7 @@
 class UdpStream : public Socket {
 private:
 public:
-  UdpStream(int fd, sockaddr_in src, sockaddr_in dst, uint8_t proto)
-    : Socket(fd, src, dst, proto) {}
+  UdpStream(int fd, sockaddr_in src, sockaddr_in dst, uint8_t proto) : Socket(fd, src, dst, proto) {}
 
   bool on_tun(int tun_fd, int epoll_fd, char *ip, char *proto, char *data,
               size_t data_size, BlockList const &block, struct stats &stats) {

@@ -25,8 +25,7 @@ private:
   JNIEnv *jni_env;
   jobject jni_service;
   jclass jni_service_class;
-  jmethodID protect;
-  jmethodID report;
+  jmethodID report_method;
 #endif
 
   inline void register_udp(ip_port_protocol const &id,
@@ -52,9 +51,8 @@ private:
   }
 
   inline void listen_initial_tcp(int fd) {
-    struct epoll_event event = {0};
-    event.events = EPOLLOUT | EPOLLHUP;
-    event.data.fd = fd;
+    debug("TCP: %i listen for EPOLLOUT or EPOLLHUP or EPOLLRDHUP", fd);
+    struct epoll_event event = epoll_event { events: EPOLLOUT | EPOLLHUP | EPOLLRDHUP, data: epoll_data { fd: fd } };
     fatal_guard(epoll_ctl(epoll_fd, EPOLL_CTL_ADD, fd, &event));
   }
 
@@ -98,7 +96,7 @@ private:
 
 #if defined(__ANDROID__)
     jni_env->CallVoidMethod(
-      jni_service, report, (jlong)tcp, (jlong)stat.tcp_total, (jlong)udp,
+      jni_service, report_method, (jlong)tcp, (jlong)stat.tcp_total, (jlong)udp,
       (jlong)stat.udp_total, (jlong)(stat.tcp_bytes_in + stat.udp_bytes_in),
       (jlong)(stat.tcp_bytes_out + stat.udp_bytes_out), (jlong)stat.blocked);
 #else
@@ -108,9 +106,9 @@ private:
   /// This function protects us from the VPN device
   /// TODO: Figure out how to drive this from android (I think VpnBuilder can
   /// take care of it)
-  inline void binddev(int fd) {
+  inline void protect_fd(int fd) {
 #if defined(__ANDROID__)
-    jni_env->CallVoidMethod(jni_service, protect, fd);
+    debug("On Android protect is done by vpnService");
 #else
     struct ifreq ifr;
     memset(&ifr, 0, sizeof(ifr));
@@ -171,7 +169,7 @@ private:
 
       // Create a new UDP FD
       int new_fd = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
-      binddev(new_fd);
+      protect_fd(new_fd);
       set_nonblocking(new_fd);
       DROP_GUARD(new_fd >= 0);
 
@@ -211,7 +209,7 @@ private:
       char *data_start = bytes + (tcp_hdr->doff << 2);
       size_t data_size = ntohs(hdr->len) - sizeof(ip) - (tcp_hdr->doff << 2);
 
-      log("TCP: Message %zu bytes", data_size);
+      debug("TCP: Message %zu bytes", data_size);
 
       if (fd_scan->second->on_tun(tunnel_fd, epoll_fd, (char *)hdr,
                                   (char *)tcp_hdr, data_start, data_size, block,
@@ -243,20 +241,22 @@ private:
       // Create a new TCP FD
       int new_fd;
       DROP_GUARD((new_fd = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP)) >= 0);
-      binddev(new_fd);
       set_nonblocking(new_fd);
       set_fast_tcp(new_fd);
-      debug("New FD: %i %i", new_fd);
+      protect_fd(new_fd);
+      debug("New FD: %i", new_fd);
       DROP_GUARD(new_fd >= 0);
 
       auto dst = lookup_dst_tcp(hdr, tcp_hdr);
 
       DROP_GUARD(connect(new_fd, (sockaddr *)&dst, sizeof(dst)));
+      protect_fd(new_fd);
 
       auto tcp_socket = std::shared_ptr<Socket>(
         new TcpStream(new_fd, generate_addr(hdr->saddr, tcp_hdr->source),
                       generate_addr(hdr->daddr, tcp_hdr->dest), IPPROTO_TCP,
                       ntohl(tcp_hdr->seq)));
+
       register_tcp(id, tcp_socket);
     }
   }
@@ -337,20 +337,19 @@ private:
       socklen_t addr_len = sizeof(addr);
 
       while (true) {
-        ssize_t len =
-          recvfrom(socket->fd, buf, 1350, 0, (sockaddr *)&addr, &addr_len);
+          ssize_t len =
+                  recvfrom(socket->fd, buf, 1350, 0, (sockaddr *) &addr, &addr_len);
 
-        debug("SOCK: %i read sz: %li", socket->fd, len);
+          debug("SOCK: %i read sz: %li", socket->fd, len);
 
-        if (len <= 0) {
-          break;
-        }
-
-        if (socket->on_data(tunnel_fd, epoll_fd, buf, len, stat)) {
-          log("SOCK: %i on-data requests NAT kill", socket->fd);
-          should_remove = true;
-          break;
-        }
+          if (len > 0) {
+              if (socket->on_data(tunnel_fd, epoll_fd, buf, len, stat)) {
+                  log("SOCK: %i on-data requests NAT kill", socket->fd);
+                  should_remove = true;
+              }
+          } else {
+              break;
+          }
       }
 
       // Update the last-use time
@@ -376,7 +375,7 @@ private:
     auto fd_scan = inbound_nat.find(event_fd);
     if (fd_scan != inbound_nat.end()) {
       auto socket = fd_scan->second;
-      debug("Found %i in NAT", second->fd);
+      debug("Found %i in NAT", socket->fd);
       socket_on_network_event(events, cur_time, socket);
     } else {
       debug("ERROR: Missing entry in NAT!?");
@@ -395,7 +394,7 @@ public:
 #endif
         stat = {0};
 
-  epoll_fd = epoll_create(5);
+  epoll_fd = epoll_create(INT_MAX);
   timer_fd = timerfd_create(CLOCK_MONOTONIC, TFD_NONBLOCK);
 
   fatal_guard(epoll_fd);
@@ -403,8 +402,7 @@ public:
 
 #if defined(__ANDROID__)
   jni_service_class = (jni_env)->GetObjectClass(jni_service);
-  report = jni_env->GetMethodID(jni_service_class, "report", "(JJJJJJJ)V");
-  protect = jni_env->GetMethodID(jni_service_class, "protect", "(I)V");
+  report_method = jni_env->GetMethodID(jni_service_class, "report", "(JJJJJJJ)V");
 #endif
 
   debug("Epoll FD: %i", epoll_fd);
@@ -425,11 +423,11 @@ public:
   debug("Setup epoll listeners");
 
   struct timespec cur_time;
-  struct timespec fin_time;
 
   while (true) {
     ssize_t event_count = epoll_wait(epoll_fd, events, MAX_EVENTS, -1);
     clock_gettime(CLOCK_MONOTONIC, &cur_time);
+    debug("Epoll %i events", event_count);
     for (size_t i = 0; i < event_count; i++) {
       if (events[i].data.fd == tunnel_fd) {
         on_tun_in();
@@ -443,7 +441,6 @@ public:
         on_network_event(events[i], cur_time);
       }
     }
-    clock_gettime(CLOCK_MONOTONIC, &fin_time);
   }
 }
 };

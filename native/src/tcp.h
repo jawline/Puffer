@@ -29,6 +29,7 @@ private:
     debug("Source: %s %i", inet_ntoa(in_addr{dst.sin_addr.s_addr}),
           dst.sin_port);
     debug("Dest: %s %i", inet_ntoa(in_addr{src.sin_addr.s_addr}), src.sin_port);
+    debug("Sequences %i:%i", us_seq, us_seq + len);
 
     char packet_buffer[MTU];
     size_t pkt_size =
@@ -73,7 +74,7 @@ public:
     close_rd = false;
     ack_rd = false;
 
-    first_packet = false;
+    first_packet = true;
 
     debug("TCP: New Stream. Initial packet sequences: %u %u", them_seq,
           them_ack);
@@ -101,11 +102,12 @@ public:
     auto tcp_hdr = (struct tcphdr *)proto;
     auto ip_len = ntohs(hdr->len);
     auto tcp_seq = ntohl(tcp_hdr->seq);
+    auto tcp_ack = ntohl(tcp_hdr->ack_seq);
     auto expected = us_ack;
 
     debug(
-      "TCP %i: Packet Length %u, TCP Seq: %u, Them Seq: %u, Expected Seq: %u",
-      fd, ip_len, tcp_seq, them_seq, expected);
+      "TCP %i: Packet Length %u, TCP Seq: %u, Them Seq: %u, Them Ack: %u Expected Seq: %u",
+      fd, ip_len, tcp_seq, them_seq, tcp_ack, expected);
 
     if (tcp_hdr->rst) {
       log("TCP %i: Broken stream (RST).", fd);
@@ -117,9 +119,10 @@ public:
       return false;
     }
 
-    if (!tcp_hdr->syn && tcp_hdr->ack && sent_syn_ack && !recv_first_ack) {
+    if (tcp_hdr->ack && sent_syn_ack && !recv_first_ack) {
       log("TCP %i: Socket ready for data", fd);
       recv_first_ack = true;
+      stop_listen(epoll_fd, fd);
       listen_tcp(epoll_fd, fd);
     }
 
@@ -144,7 +147,7 @@ public:
 
       them_seq += data_size;
 
-      log("TCP %i: DATA: Sequence: %u (New Expected: %u) Size: %zu", fd,
+      debug("TCP %i: DATA: Sequence: %u (New Expected: %u) Size: %zu", fd,
           tcp_seq, them_seq, data_size);
 
       if (first_packet) {
@@ -152,7 +155,7 @@ public:
           log("SNI: Dropping connection\n");
           stats.blocked += 1;
           return_tcp_fin(tun_fd);
-          return true;
+          close_rd = true;
         }
       }
 
@@ -202,7 +205,8 @@ public:
       // Return true -> remove the stream from NAT
       log("TCP %i: Both sides of the connection have closed and acknowledged",
           fd);
-      // return true;
+      return_a_tcp_packet(tun_fd, nullptr, 0, dst);
+      return true;
     }
 
     if (should_ack) {
@@ -235,8 +239,8 @@ public:
 
       // After sending a SYN-ACK we expect an ACK. Don't touch the REMOTE SOCKET
       // until then
-      stop_listen(epoll_fd, fd);
       sent_syn_ack = true;
+      stop_listen(epoll_fd, fd);
     }
 
     if (events & (EPOLLHUP | EPOLLRDHUP)) {

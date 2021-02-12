@@ -33,7 +33,7 @@
 #include <unistd.h>
 
 const static size_t MTU = 1500;
-const static size_t MAX_EVENTS = 20;
+const static size_t MAX_EVENTS = 200;
 const static size_t IP_HEADER_MIN_SIZE = (5 << 2);
 const static size_t UDP_NAT_TIMEOUT_SECONDS = 30;
 
