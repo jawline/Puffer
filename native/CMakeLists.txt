@@ -3,7 +3,7 @@ project(security_wall)
 
 file(GLOB SOURCES "src/*.cpp")
 
-add_definitions(-DDEBUG)
+#add_definitions(-DDEBUG)
 add_library(security_wall SHARED ${SOURCES})
 target_link_libraries(security_wall android log)
 set_property(TARGET security_wall PROPERTY CXX_STANDARD 17)

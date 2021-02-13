@@ -2,6 +2,7 @@ package com.parsed.securitywall
 
 import android.os.Build
 import android.os.ParcelFileDescriptor
+import android.system.OsConstants.AF_INET
 import android.util.Log
 import androidx.annotation.RequiresApi
 import java.io.FileOutputStream
@@ -23,7 +24,11 @@ class SecurityFilter(service: SecurityService, blockList: String): Thread() {
 
     fun protect(fd: Int) {
         Log.d(TAG, "Protected socket: $fd")
-        mService.protect(fd)
+        synchronized (mService) {
+            if (!mService.protect(fd)) {
+                Log.d(TAG, "Could not protect $fd")
+            }
+        }
     }
 
     fun report(tcp: Long, totalTcp: Long, udp: Long, totalUdp: Long, totalBytesIn: Long, totalBytesOut: Long, blocked: Long) {
@@ -51,7 +56,10 @@ class SecurityFilter(service: SecurityService, blockList: String): Thread() {
 
         Log.i(TAG,"Starting SecurityFilter")
 
-        vpnBuilder.addAddress("10.0.0.2", 32)
+        vpnBuilder.allowFamily(AF_INET);
+        vpnBuilder.addDnsServer("1.1.1.1");
+        vpnBuilder.addDisallowedApplication("com.parsed.securitywall")
+        vpnBuilder.addAddress("10.142.69.35", 32)
         vpnBuilder.addRoute("0.0.0.0", 0)
         vpnBuilder.setMtu(1500)
 

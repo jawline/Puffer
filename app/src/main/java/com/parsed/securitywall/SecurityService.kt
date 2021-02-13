@@ -117,11 +117,21 @@ class SecurityService : VpnService(), Handler.Callback {
     private fun clearNotification() = notificationManager().cancel(1)
     private fun updateForegroundNotification() {
         val pending = Intent(this, SecurityService::class.java).setAction(ACTION_STOP)
+
         var action = Notification.Action.Builder(
             R.drawable.ic_lock_unlocked,
             getString(R.string.switch_off),
             PendingIntent.getService(this, 0, pending, 0)
         ).build()
+
+        val openApp = Intent(this, SecurityWall::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
+        }
+
+        val contentIntent = PendingIntent.getActivity(
+            this, 0, openApp, PendingIntent.FLAG_UPDATE_CURRENT
+        )
+
         var bigTextStyle = Notification.BigTextStyle().bigText(
             getString(R.string.life_blocked_trackers) + " " + mStatistics!!.trackersBlocked + "\n" + getString(
                 R.string.monitored
@@ -129,9 +139,10 @@ class SecurityService : VpnService(), Handler.Callback {
         )
 
         val notification = Notification.Builder(this, NOTIFICATION_CHANNEL_ID)
-            .setSmallIcon(R.drawable.ic_locked_foreground)
+            .setSmallIcon(R.drawable.ic_stat)
             .setStyle(bigTextStyle)
             .setContentTitle(getString(R.string.blocked_trackers) + " " + sessionBlocked())
+            .setContentIntent(contentIntent)
             .addAction(action)
             .setOngoing(true)
             .build()

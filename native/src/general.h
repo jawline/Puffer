@@ -6,6 +6,7 @@
 #include "tcp.h"
 #include "udp.h"
 #include "util.h"
+#include <algorithm>
 
 class EventLoop {
 private:
@@ -153,7 +154,7 @@ private:
     report(udp, tcp, expired);
   }
 
-  inline void process_packet_udp(struct ip *hdr, char *bytes, size_t len) {
+  inline void process_packet_udp(struct ip *hdr, char *bytes, size_t len, timespec const &cur_time) {
     DROP_GUARD(len >= sizeof(struct udphdr));
     struct udphdr *udp_hdr = (struct udphdr *)bytes;
     struct ip_port_protocol id = ip_port_protocol { hdr->daddr, udp_hdr->uh_sport, udp_hdr->uh_dport, IPPROTO_UDP };
@@ -185,12 +186,12 @@ private:
     len -= sizeof(struct udphdr);
 
     if (udp_socket->on_tun(tunnel_fd, epoll_fd, (char *)hdr, (char *)udp_hdr,
-                           bytes, len, block, stat)) {
+                           bytes, len, block, stat, cur_time)) {
       remove_fd_from_nat(fd_scan->second->fd);
     }
   }
 
-  inline void process_packet_tcp(struct ip *hdr, char *bytes, size_t len) {;
+  inline void process_packet_tcp(struct ip *hdr, char *bytes, size_t len, timespec const &cur_time) {;
 
     DROP_GUARD(len >= sizeof(struct tcphdr));
     struct tcphdr *tcp_hdr = (struct tcphdr *)bytes;
@@ -209,12 +210,12 @@ private:
       char *data_start = bytes + (tcp_hdr->doff << 2);
       size_t data_size = ntohs(hdr->len) - sizeof(ip) - (tcp_hdr->doff << 2);
 
-      debug("TCP: Message %zu bytes", data_size);
+      debug("TCP %i: Message %zu bytes", fd_scan->second->fd, data_size);
 
       if (fd_scan->second->on_tun(tunnel_fd, epoll_fd, (char *)hdr,
                                   (char *)tcp_hdr, data_start, data_size, block,
-                                  stat)) {
-        log("TCP: on_tun requested %i be removed from NAT", fd_scan->second->fd);
+                                  stat, cur_time)) {
+        log("TCP %i: on_tun requested to be removed from NAT", fd_scan->second->fd);
         remove_fd_from_nat(fd_scan->second->fd);
       }
     } else {
@@ -268,7 +269,7 @@ private:
     debug("ICMP currently unsupported - TODO");
   }
 
-  inline void process_tun_packet(char bytes[MTU], size_t len) {
+  inline void process_tun_packet(char bytes[MTU], size_t len, timespec const &cur_time) {
 
     // Check we received a full IP packet
     DROP_GUARD(len >= sizeof(struct ip));
@@ -291,11 +292,11 @@ private:
       break;
     }
     case IPPROTO_UDP: {
-      process_packet_udp(hdr, rest, len);
+      process_packet_udp(hdr, rest, len, cur_time);
       break;
     }
     case IPPROTO_TCP: {
-      process_packet_tcp(hdr, rest, len);
+      process_packet_tcp(hdr, rest, len, cur_time);
       break;
     }
     default: {
@@ -312,11 +313,13 @@ private:
     fatal_guard(timerfd_settime(timer_fd, 0, &timespec, NULL));
   }
 
-  inline void on_tun_in() {
+  inline void on_tun_in(timespec const &cur_time) {
     char bytes[MTU];
     ssize_t readb;
-    while ((readb = read(tunnel_fd, bytes, MTU)) > 0) {
-      process_tun_packet(bytes, readb);
+    size_t count = 0;
+    while (count++ < MAX_READS_ITER && (readb = read(tunnel_fd, bytes, MTU)) > 0) {
+      debug("%zu", count);
+      process_tun_packet(bytes, readb, cur_time);
     }
   }
 
@@ -332,31 +335,32 @@ private:
     if (events & EPOLLIN) {
       debug("SOCK: %i awaiting data", socket->fd);
 
-      char buf[MTU];
+      char buf[65536];
+      size_t count = 0;
       sockaddr_in addr;
       socklen_t addr_len = sizeof(addr);
 
-      while (true) {
-          ssize_t len =
-                  recvfrom(socket->fd, buf, 1350, 0, (sockaddr *) &addr, &addr_len);
+      ssize_t len = recvfrom(socket->fd, buf, 65536, 0, (sockaddr *) &addr, &addr_len);
+      debug("SOCK: %i read sz: %li", socket->fd, len);
 
-          debug("SOCK: %i read sz: %li", socket->fd, len);
-
-          if (len > 0) {
-              if (socket->on_data(tunnel_fd, epoll_fd, buf, len, stat)) {
-                  log("SOCK: %i on-data requests NAT kill", socket->fd);
-                  should_remove = true;
-              }
-          } else {
+      // Split the TCP read up into smaller more manageable chunks
+      char* iter = buf;
+      while (len > 0) {
+          ssize_t next = std::min((ssize_t) MSS, len);
+          if (socket->on_data(tunnel_fd, epoll_fd, iter, next, stat, cur_time)) {
+              log("SOCK: %i on-data requests NAT kill", socket->fd);
+              should_remove = true;
               break;
           }
+          iter += next;
+          len -= next;
       }
 
       // Update the last-use time
       socket->last_use = cur_time;
     }
 
-    if (socket->on_sock(tunnel_fd, epoll_fd, events, stat)) {
+    if (socket->on_sock(tunnel_fd, epoll_fd, events, stat, cur_time)) {
       log("SOCK: %i on-sock requests NAT kill", socket->fd);
       should_remove = true;
     }
@@ -394,7 +398,7 @@ public:
 #endif
         stat = {0};
 
-  epoll_fd = epoll_create(INT_MAX);
+  epoll_fd = epoll_create(600000);
   timer_fd = timerfd_create(CLOCK_MONOTONIC, TFD_NONBLOCK);
 
   fatal_guard(epoll_fd);
@@ -430,7 +434,14 @@ public:
     debug("Epoll %i events", event_count);
     for (size_t i = 0; i < event_count; i++) {
       if (events[i].data.fd == tunnel_fd) {
-        on_tun_in();
+        for (auto socket : inbound_nat) {
+          socket.second->before_tun(tunnel_fd, epoll_fd);
+        }
+        on_tun_in(cur_time);
+        // TODO: Figure a better way of doing this later, maybe defer it to 1 every 100ms or something
+        for (auto socket : inbound_nat) {
+          socket.second->after_tun(tunnel_fd, epoll_fd, cur_time);
+        }
       } else if (events[i].data.fd == quit_fd) {
         debug(
           "TODO: Appropriately tear it all down. Kill everything. Cleanup.");

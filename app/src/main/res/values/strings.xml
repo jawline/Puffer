@@ -1,10 +1,10 @@
 <resources>
-    <string name="app_name">Tracker Guard</string>
+    <string name="app_name">Puffer Fish</string>
     <string name="monitored">Current Connections: </string>
     <string name="life_monitored">Total Checked Connections: </string>
     <string name="blocked_trackers">Blocked Trackers (This Session): </string>
     <string name="life_blocked_trackers">Blocked Trackers (Overall): </string>
     <string name="user_protected">Protected</string>
     <string name="user_unprotected">Unprotected</string>
-    <string name="switch_off">Lower Shields</string>
+    <string name="switch_off">Switch Off</string>
 </resources>

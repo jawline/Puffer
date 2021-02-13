@@ -33,11 +33,13 @@ public:
 
   virtual bool on_tun(int tun_fd, int epoll_fd, char *ip, char *proto,
                       char *data, size_t data_size, BlockList const &block,
-                      struct stats &stats) = 0;
+                      struct stats &stats, timespec const &cur_time) = 0;
+  virtual bool before_tun(int tun_fd, int epoll_fd) = 0;
+  virtual bool after_tun(int tun_fd, int epoll_fd, timespec const &cur_time) = 0;
   virtual bool on_data(int tun_fd, int epoll_fd, char *data, size_t data_size,
-                       struct stats &stats) = 0;
+                       struct stats &stats, timespec const &cur_time) = 0;
   virtual bool on_sock(int tun_fd, int epoll_fd, int events,
-                       struct stats &stats) = 0;
+                       struct stats &stats, timespec const &cur_time) = 0;
 };
 
 #endif
