@@ -6,6 +6,10 @@
 #include "tls.h"
 #include "util.h"
 
+#define NS_TO_MS(x) (((double)x) / (1000.0 * 1000.0))
+#define S_TO_MS(x) (((double)x) / 1000.0)
+#define AS_MS(x) (S_TO_MS(x.tv_sec) + NS_TO_MS(x.tv_nsec))
+
 class TcpPart {
 public:
   uint32_t seq_start;
@@ -22,12 +26,10 @@ public:
     return ack_nr > seq_start + seq_len;
   }
 
-  bool should_retransmit(timespec const &cur_time) {
-      double time_in_mill =
-              ((double) packet_time.tv_sec) * 1000 + ((double) packet_time.tv_nsec) / (1000 * 1000);
-      double now_in_mil =
-              ((double) cur_time.tv_sec) * 1000 + ((double) cur_time.tv_nsec) / (1000 * 1000);
-    if (now_in_mil - time_in_mill > 2000.0) {
+  inline bool should_retransmit(timespec const &cur_time) {
+    double delta = AS_MS(cur_time) - AS_MS(packet_time);
+    debug("Delta %lf %lf %lf\n", delta, AS_MS(cur_time), AS_MS(packet_time));
+    if (delta > 1000.0) {
       debug("Delta %f", now_in_mil - time_in_mill);
       packet_time = cur_time;
       return true;
@@ -48,8 +50,10 @@ private:
   bool recv_first_ack;
 
   bool close_wr;
+  timespec close_wr_time;
 
   bool close_rd;
+  timespec close_rd_time;
   bool ack_rd;
 
   bool first_packet;
@@ -89,12 +93,6 @@ private:
     return return_packet(tun_fd, data, len, false, true, close_rd, cur_time);
   }
 
-  inline bool return_tcp_fin(int tun_fd, timespec const &cur_time) {
-    bool res = return_packet(tun_fd, nullptr, 0, false, true, true, cur_time);
-    us_seq++;
-    return res;
-  }
-
 public:
   TcpStream(int fd, sockaddr_in src, sockaddr_in dst, uint8_t proto,
             uint32_t them_seq_start)
@@ -122,17 +120,29 @@ public:
     debug("Dest: %s %i", inet_ntoa(in_addr{dst.sin_addr.s_addr}), dst.sin_port);
   }
 
-  static inline bool should_block(char *data, size_t data_size,
+  inline bool should_block(char *data, size_t data_size,
                                   BlockList const &block) {
     char *hostname = nullptr;
     int result = parse_tls_header((uint8_t *)data, data_size, &hostname);
     bool will_block = false;
     if (hostname) {
-      debug("SNI: Found %s", hostname);
+      log("SNI %i: Found %s", fd, hostname);
       will_block = block.block(hostname);
     }
     free(hostname);
     return will_block;
+  }
+
+  inline void shutdown_send(int tun_fd, int epoll_fd, timespec const &cur_time) {
+    if (!close_rd) {
+        log("TCP %i: sent FIN byte and incremented sequence number", fd);
+        close_rd = true;
+        // Send the TCP FIN packet before incrementing the sequence number by 1 for the FIN
+        return_a_tcp_packet(tun_fd, nullptr, 0, cur_time);
+        close_rd_time = cur_time;
+        stop_listen(epoll_fd, fd);
+        us_seq += 1;
+    }
   }
 
   bool on_tun(int tun_fd, int epoll_fd, char *ip, char *proto, char *data,
@@ -191,15 +201,12 @@ public:
 
       if (first_packet) {
         if (should_block(data, data_size, block)) {
-          log("SNI: Dropping connection\n");
+          log("SNI: Dropping connection");
           stats.blocked += 1;
-          return_tcp_fin(tun_fd, cur_time);
-          close_rd = true;
+          shutdown_send(tun_fd, epoll_fd, cur_time);
         }
+        first_packet = false;
       }
-
-      // log("%20s", data);
-      // log("ED");
 
       // Send this on to the target
       size_t remaining = data_size;
@@ -207,13 +214,14 @@ public:
         ssize_t rd = send(fd, data, remaining, MSG_NOSIGNAL);
         // debug("Send %li bytes via TCP", rd);
         if (rd < 0) {
+
           if (errno == EAGAIN || errno == EWOULDBLOCK) {
             continue;
           }
+
           // TODO: ERROR!
           debug("Broken outbound stream %i", errno);
-          return_tcp_fin(tun_fd, cur_time);
-          close_rd = true;
+          shutdown_send(tun_fd, epoll_fd, cur_time);
           break;
         }
         remaining -= rd;
@@ -227,16 +235,17 @@ public:
     if (tcp_hdr->fin) {
       them_seq += 1;
       shutdown(fd, SHUT_WR);
-      log("TCP %i: Client has shutdown write half of stream", fd);
+      log("TCP %i: Client has shutdown write half of stream %u %u %i", fd, us_seq, them_ack, close_rd);
       close_wr = true;
+      close_wr_time = cur_time;
       should_ack = true;
     }
 
     // If we have sent a FIN then the final ACK will close the session
-    if (tcp_hdr->ack && close_rd) {
+    // If they have acked up until the last byte of real data we close
+    if (tcp_hdr->ack && close_rd && them_ack >= us_seq) {
       log("TCP %i: Stream has acknowledged FIN %u %u %u with %zu remaining", fd, tcp_seq, them_ack, us_seq, unacknowledged.size());
       ack_rd = true;
-      should_ack = true;
     }
 
     // Both sides are closed
@@ -280,11 +289,18 @@ public:
               }
           }
 
-          debug("Sent %zu retransmits", done);
-
-          if (close_rd && them_ack != (us_seq + 1)) {
-              retransmit_packet(tun_fd, 0, us_seq - 1, 0, false, true, close_rd);
+          // If we had anything to say and we are closing then send a fin too
+          if (done) {
+              log("Sent %zu retransmits", done);
+              if (close_rd && them_ack != (us_seq + 1)) {
+                  retransmit_packet(tun_fd, 0, us_seq - 1, 0, false, true, close_rd);
+              }
           }
+      }
+
+      if (close_rd && AS_MS(close_rd_time) > CLOSING_TIMEOUT) {
+        log("TCP %i: timeout while waiting to close (close rd)", fd);
+        return true;
       }
 
       return false;
@@ -319,12 +335,11 @@ public:
       debug(
         "TCP %i: Upstream closed. Generating FIN with SYN-ACK numbers %u %u",
         fd, us_seq, them_seq + 1);
-      return_tcp_fin(tun_fd, cur_time);
 
       // On the next ACK we actually clean up since we expect an ACK before the
       // session is fully closed
-      close_rd = true;
-      stop_listen(epoll_fd, fd);
+      // TODO: Add a CLOSING timeout of 30s
+      shutdown_send(tun_fd, epoll_fd, cur_time);
     }
 
     return false;

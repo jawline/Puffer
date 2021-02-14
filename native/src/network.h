@@ -35,6 +35,7 @@
 const static size_t MTU = 1500;
 const static ssize_t MSS = 1350;
 const static size_t MAX_READS_ITER = 10000;
+const static size_t CLOSING_TIMEOUT = 10000;
 const static size_t MAX_EVENTS = 200;
 const static size_t IP_HEADER_MIN_SIZE = (5 << 2);
 const static size_t UDP_NAT_TIMEOUT_SECONDS = 30;
