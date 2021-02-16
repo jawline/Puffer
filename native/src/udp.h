@@ -4,6 +4,7 @@
 #include "packet.h"
 #include "socket.h"
 #include "util.h"
+#include "quic.h"
 
 class UdpStream : public Socket {
 private:
@@ -12,8 +13,14 @@ public:
 
   bool on_tun(int tun_fd, int epoll_fd, char *ip, char *proto, char *data,
               size_t data_size, BlockList const &block, struct stats &stats, timespec const &cur_time) {
+
     auto ip_hdr = (struct ip *)ip;
     auto udp_hdr = (struct udphdr *)proto;
+
+    if (ntohs(udp_hdr->dest) == 443) {
+      log("Blocking QUIC connection");
+      return false;
+    }
 
     stats.udp_bytes_out += data_size;
 
