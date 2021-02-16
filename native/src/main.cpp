@@ -1,5 +1,5 @@
 #include "checksum.h"
-#include "general.h"
+#include "core.h"
 #include "log.h"
 #include "packet.h"
 #include "tcp.h"

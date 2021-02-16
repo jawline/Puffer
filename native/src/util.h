@@ -36,12 +36,16 @@ static inline void set_fast_tcp(int fd) {
     setsockopt(fd, IPPROTO_TCP, TCP_QUICKACK, (void *)&yes, sizeof(yes)));
 }
 
-static inline void listen_tcp(int epoll_fd, int fd) {
-  debug("Listen %i EPOLLIN | EPOLLHUP | EPOLLRDHUP");
-  struct epoll_event event = {0};
+// First try to modify the epoll for the fd if it is already registered,
+// otherwise try to add it. Abort if neither succeeds
+static inline void epoll_listen(int epoll_fd, int fd, uint32_t flags) {
 
-  event.events = EPOLLIN | EPOLLHUP | EPOLLRDHUP;
-  event.data.fd = fd;
+  struct epoll_event event =
+  epoll_event{events : flags, data : epoll_data{fd : fd}};
+
+  if (epoll_ctl(epoll_fd, EPOLL_CTL_MOD, fd, &event) == 0) {
+    return;
+  }
 
   fatal_guard(epoll_ctl(epoll_fd, EPOLL_CTL_ADD, fd, &event));
 }
@@ -49,6 +53,11 @@ static inline void listen_tcp(int epoll_fd, int fd) {
 static inline void stop_listen(int epoll_fd, int fd) {
   debug("Stop listening %i %i\n", epoll_fd, fd);
   epoll_ctl(epoll_fd, EPOLL_CTL_DEL, fd, nullptr);
+}
+
+static inline void listen_tcp(int epoll_fd, int fd) {
+  debug("Listen %i EPOLLIN | EPOLLHUP | EPOLLRDHUP");
+  epoll_listen(epoll_fd, fd, EPOLLIN | EPOLLHUP | EPOLLRDHUP);
 }
 
 static inline void clear_timerfd(int timer_fd) {

@@ -12,6 +12,7 @@
 #define AS_MS(x) (S_TO_MS(x.tv_sec) + NS_TO_MS(x.tv_nsec))
 
 class TcpPart {
+private:
 public:
   uint32_t seq_start;
   size_t seq_len;
@@ -43,6 +44,8 @@ public:
 
 class TcpStream : public Socket {
 private:
+  char stream_name[MAX_FQDN_LENGTH];
+
   uint32_t them_seq;
   uint32_t them_ack;
 
@@ -65,7 +68,8 @@ private:
   std::deque<TcpPart> unacknowledged;
 
   inline bool retransmit_packet(int tun_fd, char *data, uint32_t us_seq_nr,
-                                size_t len, bool syn, bool ack, bool fin) {
+                                size_t len, bool syn, bool ack,
+                                bool fin) const {
     debug("Source: %s %i", inet_ntoa(in_addr{dst.sin_addr.s_addr}),
           dst.sin_port);
     debug("Dest: %s %i", inet_ntoa(in_addr{src.sin_addr.s_addr}), src.sin_port);
@@ -129,15 +133,19 @@ public:
 
   inline bool should_block(char *data, size_t data_size,
                            BlockList const &block) {
-    char *hostname = nullptr;
-    int result = parse_tls_header((uint8_t *)data, data_size, &hostname);
-    bool will_block = false;
-    if (hostname) {
-      log("SNI %i: Found %s", fd, hostname);
-      will_block = block.block(hostname);
+
+    // Name the stream
+    int result = parse_tls_header((uint8_t *)data, data_size, stream_name);
+
+    // If there is not SNI in this stream use the IP address as the stream name
+    // instead
+    if (result <= 0) {
+      inet_ntop(AF_INET, &dst, stream_name, MAX_FQDN_LENGTH);
     }
-    free(hostname);
-    return will_block;
+
+    log("TCP %i: stream named %s", fd, stream_name);
+
+    return block.block(stream_name);
   }
 
   inline void shutdown_send(int tun_fd, int epoll_fd,

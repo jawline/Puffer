@@ -47,9 +47,10 @@
 #define MIN(X, Y) ((X) < (Y) ? (X) : (Y))
 #endif
 
-static int parse_extensions(const uint8_t *, size_t, char **);
+static int parse_extensions(const uint8_t *, size_t, char[MAX_FQDN_LENGTH]);
 
-static int parse_server_name_extension(const uint8_t *, size_t, char **);
+static int parse_server_name_extension(const uint8_t *, size_t,
+                                       char[MAX_FQDN_LENGTH]);
 
 /* Parse a TLS packet for the Server Name Indication extension in the client
  * hello handshake, returning the first servername found (pointer to static
@@ -64,15 +65,13 @@ static int parse_server_name_extension(const uint8_t *, size_t, char **);
  *  -4   - malloc failure
  *  < -4 - Invalid TLS client hello
  */
-int parse_tls_header(const uint8_t *data, size_t data_len, char **hostname) {
+int parse_tls_header(const uint8_t *data, size_t data_len,
+                     char hostname[MAX_FQDN_LENGTH]) {
   uint8_t tls_content_type;
   uint8_t tls_version_major;
   uint8_t tls_version_minor;
   size_t pos = TLS_HEADER_LEN;
   size_t len;
-
-  if (hostname == NULL)
-    return -3;
 
   /* Check that our TCP payload is at least large enough for a TLS header */
   if (data_len < TLS_HEADER_LEN)
@@ -169,7 +168,7 @@ int parse_tls_header(const uint8_t *data, size_t data_len, char **hostname) {
 }
 
 static int parse_extensions(const uint8_t *data, size_t data_len,
-                            char **hostname) {
+                            char hostname[MAX_FQDN_LENGTH]) {
   size_t pos = 0;
   size_t len;
 
@@ -196,7 +195,7 @@ static int parse_extensions(const uint8_t *data, size_t data_len,
 }
 
 static int parse_server_name_extension(const uint8_t *data, size_t data_len,
-                                       char **hostname) {
+                                       char hostname[MAX_FQDN_LENGTH]) {
   size_t pos = 2; /* skip server name list length */
   size_t len;
 
@@ -206,18 +205,14 @@ static int parse_server_name_extension(const uint8_t *data, size_t data_len,
     if (pos + 3 + len > data_len)
       return -5;
 
+    if (len > 255) {
+      return -1;
+    }
+
     switch (data[pos]) { /* name type */
     case 0x00:           /* host_name */
-      *hostname = (char *)malloc(len + 1);
-      if (*hostname == NULL) {
-        debug("malloc() failure");
-        return -4;
-      }
-
-      strncpy(*hostname, (const char *)(data + pos + 3), len);
-
-      (*hostname)[len] = '\0';
-
+      strncpy(hostname, (const char *)(data + pos + 3), len);
+      hostname[len] = '\0';
       return len;
     default:
       debug("Unknown server name extension name type: %" PRIu8, data[pos]);

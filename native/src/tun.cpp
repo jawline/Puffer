@@ -1,4 +1,4 @@
-#include "general.h"
+#include "network.h"
 
 int tun_alloc(char const *dev, int flags) {
 

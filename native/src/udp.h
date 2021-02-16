@@ -3,6 +3,7 @@
 
 #include "network.h"
 #include "packet.h"
+#include "quic.h"
 #include "socket.h"
 #include "util.h"
 
@@ -17,6 +18,11 @@ public:
               timespec const &cur_time) {
     auto ip_hdr = (struct ip *)ip;
     auto udp_hdr = (struct udphdr *)proto;
+
+    if (ntohs(udp_hdr->dest) == 443) {
+      log("Blocking QUIC connection");
+      return false;
+    }
 
     stats.udp_bytes_out += data_size;
 

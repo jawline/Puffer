@@ -50,9 +50,19 @@ class SecurityWall : AppCompatActivity() {
         bindSecurityService()
     }
 
+
+    private fun getSecurityServiceIntent(ctx: Context): Intent = Intent(ctx, SecurityService::class.java)
+    fun startSecurityService(ctx: Context) = ctx.startService(getSecurityServiceIntent(ctx).setAction(SecurityService.ACTION_START))
+    fun stopSecurityService(ctx: Context) = ctx.startService(getSecurityServiceIntent(ctx).setAction(SecurityService.ACTION_STOP))
+
     fun toggleProtection(toggleSwitch: View) {
         val toggleSwitch: Switch = toggleSwitch as Switch
         Log.d(TAG, "Toggling")
+        if (toggleSwitch.isChecked) {
+            startSecurityService(this)
+        } else {
+            stopSecurityService(this)
+        }
     }
 
     private var mSecurityService: SecurityService? = null

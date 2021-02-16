@@ -1,7 +1,6 @@
 #ifndef _GR
 #define _GR
 
-#include "general.h"
 #include "network.h"
 #include "socket.h"
 #include "tcp.h"
@@ -52,20 +51,14 @@ private:
     listen_initial_tcp(new_entry->fd);
   }
 
-  inline void listen_initial_tcp(int fd) {
+  inline void listen_initial_tcp(int fd) const {
     debug("TCP: %i listen for EPOLLOUT or EPOLLHUP or EPOLLRDHUP", fd);
-    struct epoll_event event = epoll_event{
-      events : EPOLLOUT | EPOLLHUP | EPOLLRDHUP,
-      data : epoll_data{fd : fd}
-    };
-    fatal_guard(epoll_ctl(epoll_fd, EPOLL_CTL_ADD, fd, &event));
+    epoll_listen(epoll_fd, fd, EPOLLOUT | EPOLLHUP | EPOLLRDHUP);
   }
 
-  inline void listen_in(int fd) {
-    struct epoll_event event = {0};
-    event.events = EPOLLIN;
-    event.data.fd = fd;
-    fatal_guard(epoll_ctl(epoll_fd, EPOLL_CTL_ADD, fd, &event));
+  inline void listen_in(int fd) const {
+    debug("FD: %i listen", fd);
+    epoll_listen(epoll_fd, fd, EPOLLIN);
   }
 
   inline void cleanup_removed_fd(int fd) {
@@ -91,7 +84,7 @@ private:
     }
   }
 
-  inline void report(size_t udp, size_t tcp, size_t expired) {
+  inline void report(size_t udp, size_t tcp, size_t expired) const {
 
     debug("STATE: UDP: %zu / %zu (%zu / %zu) bytes TCP: %zu / %zu (%zu / %zu) "
           "EXPIRED: %zu BLOCKED (THIS SESSION): %zu",
@@ -319,6 +312,7 @@ private:
   }
 
   inline void setup_timer() {
+    timer_fd = timerfd_create(CLOCK_MONOTONIC, TFD_NONBLOCK);
     struct itimerspec timespec = {0};
     timespec.it_value.tv_sec = 5;
     timespec.it_interval.tv_sec = 5;
@@ -414,7 +408,6 @@ public:
         stat = {0};
 
   epoll_fd = epoll_create(600000);
-  timer_fd = timerfd_create(CLOCK_MONOTONIC, TFD_NONBLOCK);
 
   fatal_guard(epoll_fd);
   fatal_guard(timer_fd);

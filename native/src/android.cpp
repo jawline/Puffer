@@ -5,7 +5,7 @@
 
 #define _GNU_SOURCE
 
-#include "general.h"
+#include "core.h"
 #include <sys/mman.h>
 
 extern "C" JNIEXPORT void JNICALL
