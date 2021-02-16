@@ -2,7 +2,9 @@
 
 #include <cstdio>
 #include <jni.h>
+
 #define _GNU_SOURCE
+
 #include "general.h"
 #include <sys/mman.h>
 

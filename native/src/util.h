@@ -1,5 +1,6 @@
 #ifndef _UTIL
 #define _UTIL
+
 #include "network.h"
 
 static inline ssize_t tun_write(int tun_fd, char *pkt, size_t pkt_sz) {
@@ -29,8 +30,10 @@ static inline void set_nonblocking(int fd) {
 
 static inline void set_fast_tcp(int fd) {
   const int yes = 1;
-  fatal_guard(setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, (void *)&yes, sizeof(yes)));
-  fatal_guard(setsockopt(fd, IPPROTO_TCP, TCP_QUICKACK, (void *)&yes, sizeof(yes)));
+  fatal_guard(
+    setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, (void *)&yes, sizeof(yes)));
+  fatal_guard(
+    setsockopt(fd, IPPROTO_TCP, TCP_QUICKACK, (void *)&yes, sizeof(yes)));
 }
 
 static inline void listen_tcp(int epoll_fd, int fd) {

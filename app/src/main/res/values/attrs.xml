@@ -2,4 +2,6 @@
 <resources>
     <attr name="colorBackground" format="reference|color" />
     <attr name="colorBorder" format="reference|color" />
+    <attr name="sleeping" format="reference" />
+    <attr name="awake" format="reference" />
 </resources>

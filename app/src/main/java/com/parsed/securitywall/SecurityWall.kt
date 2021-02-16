@@ -5,15 +5,18 @@ import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.ServiceConnection
+import android.graphics.drawable.Drawable
 import android.net.VpnService
 import android.os.Bundle
 import android.os.IBinder
 import android.util.Log
+import android.util.TypedValue
 import android.view.View
 import android.widget.ImageView
 import android.widget.Switch
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.content.ContextCompat
 import androidx.databinding.Observable
 import androidx.databinding.Observable.OnPropertyChangedCallback
 
@@ -24,7 +27,8 @@ class SecurityWall : AppCompatActivity() {
 
         try {
             this.supportActionBar!!.hide()
-        } catch (e: NullPointerException) {}
+        } catch (e: NullPointerException) {
+        }
 
         setContentView(R.layout.activity_main)
 
@@ -49,30 +53,34 @@ class SecurityWall : AppCompatActivity() {
     fun toggleProtection(toggleSwitch: View) {
         val toggleSwitch: Switch = toggleSwitch as Switch
         Log.d(TAG, "Toggling")
-        if (toggleSwitch.isChecked) {
-            BootService.startSecurityService(this) }
-        else {
-            BootService.stopSecurityService(this)
-        }
     }
 
     private var mSecurityService: SecurityService? = null
+
+    private fun extract(attr: Int): Int {
+        val typedValue = TypedValue()
+        theme.resolveAttribute(attr, typedValue, true)
+        val imageResId = typedValue.resourceId
+        return imageResId
+    }
 
     fun updateToggle() {
         val statusText = this.findViewById<TextView>(R.id.status_text)
         val statusView = this.findViewById<ImageView>(R.id.status_image)
         val toggleSwitch = findViewById<Switch>(R.id.status_toggle)
 
-        val isChecked = if (mSecurityService != null) mSecurityService!!.running.get() else { false }
+        val isChecked = if (mSecurityService != null) mSecurityService!!.running.get() else {
+            false
+        }
         toggleSwitch.isChecked = isChecked
         toggleSwitch.isEnabled = true
 
         if (isChecked) {
             statusText.setText(R.string.user_protected)
-            statusView.setImageResource(R.drawable.ic_lock_locked)
+            statusView.setImageResource(extract(R.attr.awake))
         } else {
             statusText.setText(R.string.user_unprotected)
-            statusView.setImageResource(R.drawable.ic_lock_unlocked)
+            statusView.setImageResource(extract(R.attr.sleeping))
         }
     }
 
@@ -96,7 +104,7 @@ class SecurityWall : AppCompatActivity() {
         }
     }
 
-    private var serviceWatcher = object: OnPropertyChangedCallback() {
+    private var serviceWatcher = object : OnPropertyChangedCallback() {
         override fun onPropertyChanged(sender: Observable?, propertyId: Int) {
             updateToggle()
             updateStatistics()

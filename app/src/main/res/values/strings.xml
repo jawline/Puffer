@@ -1,5 +1,5 @@
 <resources>
-    <string name="app_name">Puffer Fish</string>
+    <string name="app_name">Puffer</string>
     <string name="monitored">Current Connections: </string>
     <string name="life_monitored">Total Checked Connections: </string>
     <string name="blocked_trackers">Blocked Trackers (This Session): </string>

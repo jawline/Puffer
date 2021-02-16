@@ -2,7 +2,9 @@
 #define _LGH
 
 #if defined(__ANDROID__)
+
 #include <android/log.h>
+
 #define log(fmt, ...)                                                          \
   do {                                                                         \
     __android_log_print(ANDROID_LOG_DEBUG, "SecurityWall-Native",              \
@@ -43,11 +45,11 @@
     return r;                                                                  \
   }
 
-#define fatal_guard(r) \
-  if (r < 0) { \
-    log("Guard violated. errno=%i", errno); \
-    abort(); \
-  } \
+#define fatal_guard(r)                                                         \
+  if (r < 0) {                                                                 \
+    log("Guard violated. errno=%i", errno);                                    \
+    abort();                                                                   \
+  }                                                                            \
   r
 
 /* Use macro version for line numbers

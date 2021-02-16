@@ -15,15 +15,16 @@ class SecurityService : VpnService(), Handler.Callback {
     private var mStatistics: SecurityStatistics? = null
 
     private val mBinder: IBinder = LocalBinder()
+
     inner class LocalBinder : Binder() {
         val service: SecurityService
-        get() = this@SecurityService
+            get() = this@SecurityService
     }
 
     private fun statsFile() = File(this.cacheDir.absolutePath + ".stats")
     private fun notificationManager() = getSystemService(
-            android.content.Context.NOTIFICATION_SERVICE
-        ) as android.app.NotificationManager
+        android.content.Context.NOTIFICATION_SERVICE
+    ) as android.app.NotificationManager
 
     override fun onCreate() {
         Tmpfile.init(applicationContext.cacheDir)
@@ -42,7 +43,6 @@ class SecurityService : VpnService(), Handler.Callback {
         mSecurityFilter = Util.readRawTextFile(this, R.raw.base)?.let { SecurityFilter(this, it) }
         mSecurityFilter!!.start()
         running.set(true)
-        BootService.autostartOnBoot(this)
     }
 
     private fun disconnect() {
@@ -50,9 +50,7 @@ class SecurityService : VpnService(), Handler.Callback {
         if (mSecurityFilter != null) {
             Log.d(TAG, "Really stopping the thread")
             mSecurityFilter?.interrupt()
-            while (mSecurityFilter?.isAlive == true) {
-                Log.d(TAG, "Not finished yet")
-            }
+            while (mSecurityFilter?.isAlive == true) {}
             mSecurityFilter = null
             running.set(false)
             Log.d(TAG, "Done")
@@ -65,7 +63,6 @@ class SecurityService : VpnService(), Handler.Callback {
     override fun onStartCommand(intent: Intent, flags: Int, startId: Int): Int {
         Log.d(TAG, "onStart")
         return if (ACTION_STOP == intent.action) {
-            BootService.cancelOnBoot(this)
             disconnect()
             clearNotification()
             stopForeground(true)
@@ -105,21 +102,29 @@ class SecurityService : VpnService(), Handler.Callback {
         }, 50)
     }
 
-    fun currentConnections() = if (mSecurityFilter != null) mSecurityFilter!!.currentTcp + mSecurityFilter!!.currentUdp else 0
+    fun currentConnections() =
+        if (mSecurityFilter != null) mSecurityFilter!!.currentTcp + mSecurityFilter!!.currentUdp else 0
+
     fun sessionBlocked() = if (mSecurityFilter != null) mSecurityFilter!!.lastBlocked else 0
-    fun sessionConnections() = if (mSecurityFilter != null) mSecurityFilter!!.lastTcp + mSecurityFilter!!.lastUdp else 0
-    fun sessionBytes() = if (mSecurityFilter != null) mSecurityFilter!!.lastBytesIn + mSecurityFilter!!.lastBytesOut else 0
+    fun sessionConnections() =
+        if (mSecurityFilter != null) mSecurityFilter!!.lastTcp + mSecurityFilter!!.lastUdp else 0
+
+    fun sessionBytes() =
+        if (mSecurityFilter != null) mSecurityFilter!!.lastBytesIn + mSecurityFilter!!.lastBytesOut else 0
 
     fun totalBlocked() = if (mStatistics != null) mStatistics!!.trackersBlocked else 0
-    fun totalConnections() = if (mStatistics != null) mStatistics!!.totalTcp + mStatistics!!.totalUdp else 0
-    fun totalBytes() = if (mStatistics != null) mStatistics!!.totalBytesIn + mStatistics!!.totalBytesOut else 0
+    fun totalConnections() =
+        if (mStatistics != null) mStatistics!!.totalTcp + mStatistics!!.totalUdp else 0
+
+    fun totalBytes() =
+        if (mStatistics != null) mStatistics!!.totalBytesIn + mStatistics!!.totalBytesOut else 0
 
     private fun clearNotification() = notificationManager().cancel(1)
     private fun updateForegroundNotification() {
         val pending = Intent(this, SecurityService::class.java).setAction(ACTION_STOP)
 
         var action = Notification.Action.Builder(
-            R.drawable.ic_lock_unlocked,
+            R.drawable.ic_sleeping_light,
             getString(R.string.switch_off),
             PendingIntent.getService(this, 0, pending, 0)
         ).build()

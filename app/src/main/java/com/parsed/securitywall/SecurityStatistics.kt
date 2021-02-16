@@ -37,13 +37,15 @@ class SecurityStatistics {
         fun load(file: File): SecurityStatistics {
             try {
                 val f = InputStreamReader(FileInputStream(file))
-                val res: SecurityStatistics = Gson().fromJson(f, object: TypeToken<SecurityStatistics>(){}.type)
+                val res: SecurityStatistics =
+                    Gson().fromJson(f, object : TypeToken<SecurityStatistics>() {}.type)
                 f.close()
                 return res
             } catch (e: IOException) {
                 return SecurityStatistics()
             }
         }
+
         const val TAG: String = "SecurityStatistics"
     }
 }

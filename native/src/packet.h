@@ -1,5 +1,6 @@
 #ifndef SECURITYWALL_PACKET
 #define SECURITYWALL_PACKET
+
 #include "network.h"
 
 /**

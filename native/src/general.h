@@ -1,5 +1,6 @@
 #ifndef _GR
 #define _GR
+
 #include "general.h"
 #include "network.h"
 #include "socket.h"
@@ -53,7 +54,10 @@ private:
 
   inline void listen_initial_tcp(int fd) {
     debug("TCP: %i listen for EPOLLOUT or EPOLLHUP or EPOLLRDHUP", fd);
-    struct epoll_event event = epoll_event { events: EPOLLOUT | EPOLLHUP | EPOLLRDHUP, data: epoll_data { fd: fd } };
+    struct epoll_event event = epoll_event{
+      events : EPOLLOUT | EPOLLHUP | EPOLLRDHUP,
+      data : epoll_data{fd : fd}
+    };
     fatal_guard(epoll_ctl(epoll_fd, EPOLL_CTL_ADD, fd, &event));
   }
 
@@ -154,10 +158,12 @@ private:
     report(udp, tcp, expired);
   }
 
-  inline void process_packet_udp(struct ip *hdr, char *bytes, size_t len, timespec const &cur_time) {
+  inline void process_packet_udp(struct ip *hdr, char *bytes, size_t len,
+                                 timespec const &cur_time) {
     DROP_GUARD(len >= sizeof(struct udphdr));
     struct udphdr *udp_hdr = (struct udphdr *)bytes;
-    struct ip_port_protocol id = ip_port_protocol { hdr->daddr, udp_hdr->uh_sport, udp_hdr->uh_dport, IPPROTO_UDP };
+    struct ip_port_protocol id = ip_port_protocol{
+      hdr->daddr, udp_hdr->uh_sport, udp_hdr->uh_dport, IPPROTO_UDP};
 
     auto fd_scan = outbound_nat.find(id);
     std::shared_ptr<Socket> udp_socket;
@@ -191,13 +197,17 @@ private:
     }
   }
 
-  inline void process_packet_tcp(struct ip *hdr, char *bytes, size_t len, timespec const &cur_time) {;
+  inline void process_packet_tcp(struct ip *hdr, char *bytes, size_t len,
+                                 timespec const &cur_time) {
+    ;
 
     DROP_GUARD(len >= sizeof(struct tcphdr));
     struct tcphdr *tcp_hdr = (struct tcphdr *)bytes;
-    struct ip_port_protocol id = ip_port_protocol{hdr->daddr, tcp_hdr->source, tcp_hdr->dest, IPPROTO_TCP};
+    struct ip_port_protocol id =
+      ip_port_protocol{hdr->daddr, tcp_hdr->source, tcp_hdr->dest, IPPROTO_TCP};
 
-    debug("TCP %i %i %i %i", tcp_hdr->syn, tcp_hdr->ack, tcp_hdr->fin, tcp_hdr->rst);
+    debug("TCP %i %i %i %i", tcp_hdr->syn, tcp_hdr->ack, tcp_hdr->fin,
+          tcp_hdr->rst);
     debug("Source: %s %i", inet_ntoa(in_addr{hdr->saddr}), tcp_hdr->source);
     debug("Dest: %s %i", inet_ntoa(in_addr{hdr->daddr}), tcp_hdr->dest);
 
@@ -215,7 +225,8 @@ private:
       if (fd_scan->second->on_tun(tunnel_fd, epoll_fd, (char *)hdr,
                                   (char *)tcp_hdr, data_start, data_size, block,
                                   stat, cur_time)) {
-        log("TCP %i: on_tun requested to be removed from NAT", fd_scan->second->fd);
+        log("TCP %i: on_tun requested to be removed from NAT",
+            fd_scan->second->fd);
         remove_fd_from_nat(fd_scan->second->fd);
       }
     } else {
@@ -269,7 +280,8 @@ private:
     debug("ICMP currently unsupported - TODO");
   }
 
-  inline void process_tun_packet(char bytes[MTU], size_t len, timespec const &cur_time) {
+  inline void process_tun_packet(char bytes[MTU], size_t len,
+                                 timespec const &cur_time) {
 
     // Check we received a full IP packet
     DROP_GUARD(len >= sizeof(struct ip));
@@ -317,7 +329,8 @@ private:
     char bytes[MTU];
     ssize_t readb;
     size_t count = 0;
-    while (count++ < MAX_READS_ITER && (readb = read(tunnel_fd, bytes, MTU)) > 0) {
+    while (count++ < MAX_READS_ITER &&
+           (readb = read(tunnel_fd, bytes, MTU)) > 0) {
       debug("%zu", count);
       process_tun_packet(bytes, readb, cur_time);
     }
@@ -340,20 +353,21 @@ private:
       sockaddr_in addr;
       socklen_t addr_len = sizeof(addr);
 
-      ssize_t len = recvfrom(socket->fd, buf, 65536, 0, (sockaddr *) &addr, &addr_len);
+      ssize_t len =
+        recvfrom(socket->fd, buf, 65536, 0, (sockaddr *)&addr, &addr_len);
       debug("SOCK: %i read sz: %li", socket->fd, len);
 
       // Split the TCP read up into smaller more manageable chunks
-      char* iter = buf;
+      char *iter = buf;
       while (len > 0) {
-          ssize_t next = std::min((ssize_t) MSS, len);
-          if (socket->on_data(tunnel_fd, epoll_fd, iter, next, stat, cur_time)) {
-              log("SOCK: %i on-data requests NAT kill", socket->fd);
-              should_remove = true;
-              break;
-          }
-          iter += next;
-          len -= next;
+        ssize_t next = std::min((ssize_t)MSS, len);
+        if (socket->on_data(tunnel_fd, epoll_fd, iter, next, stat, cur_time)) {
+          log("SOCK: %i on-data requests NAT kill", socket->fd);
+          should_remove = true;
+          break;
+        }
+        iter += next;
+        len -= next;
       }
 
       // Update the last-use time
@@ -388,6 +402,7 @@ private:
 
 public:
 #if defined(__ANDROID__)
+
   EventLoop(int tunnel_fd, int quit_fd, BlockList const &list, JNIEnv *jni_env,
             jobject jni_service)
     : tunnel_fd(tunnel_fd), quit_fd(quit_fd), block(list), jni_env(jni_env),
@@ -406,13 +421,14 @@ public:
 
 #if defined(__ANDROID__)
   jni_service_class = (jni_env)->GetObjectClass(jni_service);
-  report_method = jni_env->GetMethodID(jni_service_class, "report", "(JJJJJJJ)V");
+  report_method =
+    jni_env->GetMethodID(jni_service_class, "report", "(JJJJJJJ)V");
 #endif
 
   debug("Epoll FD: %i", epoll_fd);
 }
 
-  void user_space_ip_proxy() {
+void user_space_ip_proxy() {
 
   setup_timer();
 
@@ -438,13 +454,13 @@ public:
           socket.second->before_tun(tunnel_fd, epoll_fd);
         }
         on_tun_in(cur_time);
-        // TODO: Figure a better way of doing this later, maybe defer it to 1 every 100ms or something
+        // TODO: Figure a better way of doing this later, maybe defer it to 1
+        // every 100ms or something
         for (auto socket : inbound_nat) {
           socket.second->after_tun(tunnel_fd, epoll_fd, cur_time);
         }
       } else if (events[i].data.fd == quit_fd) {
-        debug(
-          "TODO: Appropriately tear it all down. Kill everything. Cleanup.");
+        log("Loop FD called, cleaning up");
         return;
       } else if (events[i].data.fd == timer_fd) {
         on_timer_in(cur_time);
@@ -454,6 +470,7 @@ public:
     }
   }
 }
-};
+}
+;
 
 #endif

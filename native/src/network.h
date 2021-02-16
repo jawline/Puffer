@@ -2,7 +2,9 @@
 #define SECURITYWALL_NETWORK_H
 
 #if defined(__ANDROID__)
+
 #include <jni.h>
+
 #endif
 
 #include "block_list.h"

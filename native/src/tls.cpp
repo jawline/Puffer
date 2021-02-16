@@ -48,6 +48,7 @@
 #endif
 
 static int parse_extensions(const uint8_t *, size_t, char **);
+
 static int parse_server_name_extension(const uint8_t *, size_t, char **);
 
 /* Parse a TLS packet for the Server Name Indication extension in the client

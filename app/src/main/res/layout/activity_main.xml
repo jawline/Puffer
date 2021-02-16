@@ -42,7 +42,7 @@
                 app:layout_constraintBottom_toTopOf="@id/status_toggle"
                 app:layout_constraintEnd_toEndOf="parent"
                 app:layout_constraintStart_toStartOf="parent"
-                app:srcCompat="@drawable/ic_lock_locked" />
+                app:srcCompat="?attr/sleeping" />
 
             <Switch
                 android:id="@+id/status_toggle"
@@ -103,6 +103,7 @@
 
 
             <TableRow>
+
                 <TextView
                     android:padding="10dp"
                     android:text="Current Connections:" />
@@ -149,6 +150,7 @@
             </TableRow>
 
             <TableRow>
+
                 <TextView
                     android:padding="10dp"
                     android:text="Total Blocked Trackers:" />
@@ -161,6 +163,7 @@
             </TableRow>
 
             <TableRow>
+
                 <TextView
                     android:padding="10dp"
                     android:text="Connections Inspected:" />
