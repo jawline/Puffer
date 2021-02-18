@@ -44,7 +44,6 @@ public:
 
 class TcpStream : public Socket {
 private:
-  char stream_name[MAX_FQDN_LENGTH];
 
   uint32_t them_seq;
   uint32_t them_ack;

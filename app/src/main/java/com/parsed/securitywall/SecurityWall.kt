@@ -6,6 +6,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.ServiceConnection
 import android.graphics.drawable.Drawable
+import android.net.Uri
 import android.net.VpnService
 import android.os.Bundle
 import android.os.IBinder
@@ -51,9 +52,14 @@ class SecurityWall : AppCompatActivity() {
     }
 
 
-    private fun getSecurityServiceIntent(ctx: Context): Intent = Intent(ctx, SecurityService::class.java)
-    fun startSecurityService(ctx: Context) = ctx.startService(getSecurityServiceIntent(ctx).setAction(SecurityService.ACTION_START))
-    fun stopSecurityService(ctx: Context) = ctx.startService(getSecurityServiceIntent(ctx).setAction(SecurityService.ACTION_STOP))
+    private fun getSecurityServiceIntent(ctx: Context): Intent =
+        Intent(ctx, SecurityService::class.java)
+
+    fun startSecurityService(ctx: Context) =
+        ctx.startService(getSecurityServiceIntent(ctx).setAction(SecurityService.ACTION_START))
+
+    fun stopSecurityService(ctx: Context) =
+        ctx.startService(getSecurityServiceIntent(ctx).setAction(SecurityService.ACTION_STOP))
 
     fun toggleProtection(toggleSwitch: View) {
         val toggleSwitch: Switch = toggleSwitch as Switch
@@ -150,6 +156,16 @@ class SecurityWall : AppCompatActivity() {
             unbindService(mSecurityServiceBinding)
             mSecurityService = null
         }
+    }
+
+    fun showLiveView(btn: View) {
+        val liveView = Intent(this, LiveView::class.java)
+        startActivity(liveView)
+    }
+
+    fun testAdblocker(btn: View) {
+        val browserIntent = Intent(Intent.ACTION_VIEW, Uri.parse("https://ads-blocker.com/testing/"))
+        startActivity(browserIntent)
     }
 
     override fun onDestroy() {

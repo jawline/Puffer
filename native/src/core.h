@@ -27,6 +27,8 @@ private:
   jobject jni_service;
   jclass jni_service_class;
   jmethodID report_method;
+  jmethodID report_conn_method;
+  jmethodID report_finished;
 #endif
 
   inline void register_udp(ip_port_protocol const &id,
@@ -97,6 +99,31 @@ private:
       jni_service, report_method, (jlong)tcp, (jlong)stat.tcp_total, (jlong)udp,
       (jlong)stat.udp_total, (jlong)(stat.tcp_bytes_in + stat.udp_bytes_in),
       (jlong)(stat.tcp_bytes_out + stat.udp_bytes_out), (jlong)stat.blocked);
+
+    // First send the TCP then the UDP sockets by looping over the list twice
+    // TODO: This is pretty lazy and could be tidied up
+
+    for (auto conn : outbound_nat) {
+      if (conn.second->proto == IPPROTO_TCP) {
+        char const *ip = inet_ntoa(conn.second->dst.sin_addr);
+        jstring ip_str = jni_env->NewStringUTF(ip);
+        jstring sni_str = jni_env->NewStringUTF(conn.second->stream_name);
+        jni_env->CallVoidMethod(jni_service, report_conn_method, sni_str, ip_str,
+                                conn.second->dst.sin_port);
+      }
+    }
+
+    for (auto conn : outbound_nat) {
+      if (conn.second->proto == IPPROTO_UDP) {
+        char const *ip = inet_ntoa(conn.second->dst.sin_addr);
+        jstring ip_str = jni_env->NewStringUTF(ip);
+        jstring sni_str = jni_env->NewStringUTF(conn.second->stream_name);
+        jni_env->CallVoidMethod(jni_service, report_conn_method, sni_str, ip_str,
+                                conn.second->dst.sin_port);
+      }
+    }
+
+    jni_env->CallVoidMethod(jni_service, report_finished);
 #else
 #endif
   }
@@ -283,6 +310,11 @@ private:
     // TODO: Add IPv6 later once we get this IPv4 thing worked out
     debug("IP HDR Version: %i %i %i", hdr->version, hdr->ihl, hdr->proto);
     DROP_GUARD(hdr->version == 4);
+    DROP_GUARD(hdr->daddr != 0xffffffff);
+
+    // Drop the multicast ranges
+    uint8_t first_octet = ntohl(hdr->daddr) >> 24;
+    DROP_GUARD(first_octet < 224 || first_octet > 239);
 
     size_t ip_header_size_bytes = hdr->ihl << 2;
 
@@ -416,6 +448,10 @@ public:
   jni_service_class = (jni_env)->GetObjectClass(jni_service);
   report_method =
     jni_env->GetMethodID(jni_service_class, "report", "(JJJJJJJ)V");
+  report_conn_method=
+            jni_env->GetMethodID(jni_service_class, "reportConn", "(Ljava/lang/String;Ljava/lang/String;I)V");
+  report_finished =
+            jni_env->GetMethodID(jni_service_class, "reportFinished", "()V");
 #endif
 
   debug("Epoll FD: %i", epoll_fd);

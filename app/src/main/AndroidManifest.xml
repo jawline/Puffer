@@ -19,6 +19,8 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+        <activity android:name=".LiveView" android:screenOrientation="portrait" android:configChanges="orientation|keyboardHidden">
+        </activity>
         <service
             android:name=".SecurityService"
             android:permission="android.permission.BIND_VPN_SERVICE">

@@ -7,6 +7,7 @@
 #include <netinet/in.h>
 #include <sys/socket.h>
 #include <time.h>
+#include "tls.h"
 
 class Socket {
 public:
@@ -16,6 +17,7 @@ public:
     this->dst = dst;
     this->proto = proto;
     clock_gettime(CLOCK_MONOTONIC, &last_use);
+    strcpy(stream_name, "N/A");
   }
 
   ~Socket() {
@@ -30,6 +32,8 @@ public:
 
   sockaddr_in src;
   sockaddr_in dst;
+
+  char stream_name[MAX_FQDN_LENGTH];
 
   uint8_t proto;
   struct timespec last_use;

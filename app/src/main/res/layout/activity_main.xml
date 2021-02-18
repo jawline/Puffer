@@ -8,7 +8,6 @@
     android:orientation="vertical"
     tools:context=".SecurityWall">
 
-
     <LinearLayout
         android:id="@+id/toggle_view"
         android:background="?attr/colorBackground"
@@ -20,7 +19,7 @@
 
         <androidx.constraintlayout.widget.ConstraintLayout
             android:layout_width="match_parent"
-            android:layout_height="280dp">
+            android:layout_height="260dp">
 
             <TextView
                 android:id="@+id/status_text"
@@ -63,9 +62,10 @@
     </LinearLayout>
 
     <androidx.cardview.widget.CardView
+        android:id="@+id/stats_card"
         android:layout_width="fill_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="30dp"
+        android:layout_marginTop="10dp"
         android:layout_marginLeft="20dp"
         android:layout_marginRight="20dp"
         app:cardElevation="0dp"
@@ -188,6 +188,45 @@
                     android:text="" />
             </TableRow>
         </TableLayout>
+
     </androidx.cardview.widget.CardView>
+
+    <LinearLayout
+        android:id="@+id/buttons"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/stats_card">
+
+    <ImageButton
+        android:id="@+id/bAnalytics"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:background="#000000F0"
+        android:src="@drawable/ic_analytics_black_18dp"
+        android:onClick="showLiveView"
+        android:layout_marginRight="10dp"
+        android:layout_marginTop="10dp" />
+
+    <ImageButton
+        android:id="@+id/bTest"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:background="#000000F0"
+        android:src="@drawable/ic_fact_check_black_18dp"
+        android:layout_marginTop="10dp"
+        android:onClick="testAdblocker"/>
+    </LinearLayout>
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/buttons"
+        android:textAlignment="center"
+        android:padding="8dp"
+        android:text="@string/please_clear_cache"></TextView>
 
 </androidx.constraintlayout.widget.ConstraintLayout>

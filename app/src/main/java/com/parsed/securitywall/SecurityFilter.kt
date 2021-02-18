@@ -56,6 +56,14 @@ class SecurityFilter(service: SecurityService, blockList: String) : Thread() {
         lastBytesOut = totalBytesOut
     }
 
+    fun reportConn(sni: String, ip: String, port: Int) {
+        mService.reportConn(ConnectionInfo(sni, ip, port))
+    }
+
+    fun reportFinished() {
+        mService.reportFinished();
+    }
+
     override fun interrupt() {
         super.interrupt()
         if (this.quit != null) {

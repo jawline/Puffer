@@ -13,6 +13,7 @@ import java.io.*
 class SecurityService : VpnService(), Handler.Callback {
     private var mSecurityFilter: SecurityFilter? = null
     private var mStatistics: SecurityStatistics? = null
+    val mCurrentConns = ArrayList<ConnectionInfo>()
 
     private val mBinder: IBinder = LocalBinder()
 
@@ -58,6 +59,7 @@ class SecurityService : VpnService(), Handler.Callback {
     }
 
     val running = ObservableBoolean()
+    val reported = ObservableBoolean()
 
     @RequiresApi(Build.VERSION_CODES.O)
     override fun onStartCommand(intent: Intent, flags: Int, startId: Int): Int {
@@ -95,9 +97,17 @@ class SecurityService : VpnService(), Handler.Callback {
         mStatistics!!.totalBytesOut += newBytesOut
         mStatistics!!.trackersBlocked += newBlocked
         mStatistics!!.save(statsFile())
+        mCurrentConns.clear() // Clear all conns each report the C portion will re-send
+    }
 
+    fun reportConn(info: ConnectionInfo) {
+        mCurrentConns.add(info)
+    }
+
+    fun reportFinished() {
         Handler(Looper.getMainLooper()).postDelayed({
             running.notifyChange()
+            reported.notifyChange()
             updateForegroundNotification()
         }, 50)
     }

@@ -7,4 +7,5 @@
     <string name="user_protected">Protected</string>
     <string name="user_unprotected">Unprotected</string>
     <string name="switch_off">Switch Off</string>
+    <string name="please_clear_cache">If adverts are still visible on the testing page please clear your browser cache and try again before filing a report.</string>
 </resources>
