@@ -7,14 +7,14 @@
 
 class BlockList {
 private:
-  std::vector<std::string> block_includes;
+    std::vector<std::string> block_includes;
 
 public:
-  BlockList();
+    BlockList();
 
-  BlockList(FILE *source);
+    BlockList(FILE *source);
 
-  bool block(char const *hostname) const;
+    bool block(char const *hostname) const;
 };
 
 #endif

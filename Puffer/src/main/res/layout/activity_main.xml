@@ -1,0 +1,232 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="fill_parent"
+    android:layout_height="fill_parent"
+    android:background="?attr/colorBackground"
+    android:orientation="vertical"
+    tools:context=".SecurityWall">
+
+    <LinearLayout
+        android:id="@+id/toggle_view"
+        android:layout_width="fill_parent"
+        android:layout_height="wrap_content"
+        android:background="?attr/colorBackground"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent">
+
+        <androidx.constraintlayout.widget.ConstraintLayout
+            android:layout_width="match_parent"
+            android:layout_height="260dp">
+
+            <TextView
+                android:id="@+id/status_text"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:textSize="30dp"
+                android:textStyle="bold"
+                app:layout_constraintBottom_toTopOf="@id/status_image"
+                app:layout_constraintEnd_toEndOf="parent"
+                app:layout_constraintStart_toStartOf="parent"
+                app:layout_constraintTop_toTopOf="parent"></TextView>
+
+            <ImageView
+                android:id="@+id/status_image"
+                android:layout_width="wrap_content"
+                android:layout_height="130dp"
+                android:minWidth="0dp"
+                android:minHeight="0dp"
+                app:layout_constraintBottom_toTopOf="@id/status_toggle"
+                app:layout_constraintEnd_toEndOf="parent"
+                app:layout_constraintStart_toStartOf="parent"
+                app:srcCompat="?attr/sleeping" />
+
+            <Switch
+                android:id="@+id/status_toggle"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:enabled="false"
+                android:onClick="toggleProtection"
+                android:paddingTop="40dp"
+                android:paddingBottom="80dp"
+                android:scaleX="2"
+                android:scaleY="2"
+                app:layout_constraintBottom_toBottomOf="parent"
+                app:layout_constraintEnd_toEndOf="parent"
+                app:layout_constraintStart_toStartOf="parent"
+                app:layout_constraintTop_toBottomOf="parent" />
+
+        </androidx.constraintlayout.widget.ConstraintLayout>
+    </LinearLayout>
+
+    <androidx.cardview.widget.CardView
+        android:id="@+id/stats_card"
+        android:layout_width="fill_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginLeft="20dp"
+        android:layout_marginTop="10dp"
+        android:layout_marginRight="20dp"
+        android:foreground="@drawable/border"
+        app:cardCornerRadius="0dp"
+        app:cardElevation="0dp"
+        app:contentPadding="5dp"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/toggle_view">
+
+        <TableLayout
+            android:layout_width="fill_parent"
+            android:layout_height="match_parent"
+            android:stretchColumns="1">
+
+            <TableRow>
+
+                <TextView
+                    android:padding="10dp"
+                    android:text="This Session"
+                    android:textStyle="bold" />
+            </TableRow>
+
+            <TableRow>
+
+                <TextView
+                    android:padding="10dp"
+                    android:text="Blocked:" />
+
+                <TextView
+                    android:id="@+id/session_blocked"
+                    android:gravity="right"
+                    android:padding="10dp"
+                    android:text="" />
+            </TableRow>
+
+
+            <TableRow>
+
+                <TextView
+                    android:padding="10dp"
+                    android:text="Current Connections:" />
+
+                <TextView
+                    android:id="@+id/current_connections"
+                    android:gravity="right"
+                    android:padding="10dp"
+                    android:text="" />
+            </TableRow>
+
+            <TableRow>
+
+                <TextView
+                    android:padding="10dp"
+                    android:text="Connections Inspected:" />
+
+                <TextView
+                    android:id="@+id/session_connections"
+                    android:gravity="right"
+                    android:padding="10dp"
+                    android:text="" />
+            </TableRow>
+
+            <TableRow>
+
+                <TextView
+                    android:padding="10dp"
+                    android:text="Bytes Transferred:" />
+
+                <TextView
+                    android:id="@+id/session_bytes"
+                    android:gravity="right"
+                    android:padding="10dp"
+                    android:text="" />
+            </TableRow>
+
+            <TableRow>
+
+                <TextView
+                    android:padding="10dp"
+                    android:text="Lifetime"
+                    android:textStyle="bold" />
+            </TableRow>
+
+            <TableRow>
+
+                <TextView
+                    android:padding="10dp"
+                    android:text="Total Blocked Trackers:" />
+
+                <TextView
+                    android:id="@+id/total_blocked"
+                    android:gravity="right"
+                    android:padding="10dp"
+                    android:text="" />
+            </TableRow>
+
+            <TableRow>
+
+                <TextView
+                    android:padding="10dp"
+                    android:text="Connections Inspected:" />
+
+                <TextView
+                    android:id="@+id/total_connections"
+                    android:gravity="right"
+                    android:padding="10dp"
+                    android:text="" />
+            </TableRow>
+
+            <TableRow>
+
+                <TextView
+                    android:padding="10dp"
+                    android:text="Bytes Transferred:" />
+
+                <TextView
+                    android:id="@+id/total_bytes"
+                    android:gravity="right"
+                    android:padding="10dp"
+                    android:text="" />
+            </TableRow>
+        </TableLayout>
+
+    </androidx.cardview.widget.CardView>
+
+    <LinearLayout
+        android:id="@+id/buttons"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/stats_card">
+
+        <ImageButton
+            android:id="@+id/bAnalytics"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="10dp"
+            android:layout_marginRight="10dp"
+            android:background="#000000F0"
+            android:onClick="showLiveView"
+            android:src="@drawable/ic_analytics_black_18dp" />
+
+        <ImageButton
+            android:id="@+id/bTest"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="10dp"
+            android:background="#000000F0"
+            android:onClick="testAdblocker"
+            android:src="@drawable/ic_fact_check_black_18dp" />
+    </LinearLayout>
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:padding="8dp"
+        android:text="@string/please_clear_cache"
+        android:textAlignment="center"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/buttons"></TextView>
+
+</androidx.constraintlayout.widget.ConstraintLayout>

@@ -44,39 +44,41 @@ const static size_t UDP_NAT_TIMEOUT_SECONDS = 30;
 
 struct ip {
 #if defined(__LITTLE_ENDIAN_BITFIELD)
-  uint8_t ihl : 4;
-  uint8_t version : 4;
+    uint8_t ihl: 4;
+    uint8_t version: 4;
 #else
-  uint8_t version : 4;
-  uint8_t ihl : 4;
+    uint8_t version : 4;
+    uint8_t ihl : 4;
 #endif
-  uint8_t tos;
-  uint16_t len;
-  uint16_t id;
+    uint8_t tos;
+    uint16_t len;
+    uint16_t id;
 #if defined(__LITTLE_ENDIAN_BITFIELD)
-  uint16_t flags : 3;
-  uint16_t frag_offset : 13;
+    uint16_t flags: 3;
+    uint16_t frag_offset: 13;
 #else
-  uint16_t frag_offset : 13;
-  uint16_t flags : 3;
+    uint16_t frag_offset : 13;
+    uint16_t flags : 3;
 #endif
-  uint8_t ttl;
-  uint8_t proto;
-  uint16_t csum;
-  uint32_t saddr;
-  uint32_t daddr;
+    uint8_t ttl;
+    uint8_t proto;
+    uint16_t csum;
+    uint32_t saddr;
+    uint32_t daddr;
 } __attribute__((packed));
 
 struct ip_port_protocol {
-  uint32_t ip;
-  uint16_t src_port;
-  uint16_t dst_port;
-  uint8_t proto;
+    uint32_t ip;
+    uint16_t src_port;
+    uint16_t dst_port;
+    uint8_t proto;
 
-  bool operator==(const ip_port_protocol &o) const { return ip == o.ip && src_port == o.src_port && dst_port == o.dst_port && proto == o.proto; }
+    bool operator==(const ip_port_protocol &o) const {
+        return ip == o.ip && src_port == o.src_port && dst_port == o.dst_port && proto == o.proto;
+    }
 
-  // Impl comparison to allow use in a map
-  bool operator<(const ip_port_protocol &o) const {
+    // Impl comparison to allow use in a map
+    bool operator<(const ip_port_protocol &o) const {
 #define CHECK_GUARD(a, b)                                                                                                                                      \
   if (a < b) {                                                                                                                                                 \
     return true;                                                                                                                                               \
@@ -84,26 +86,26 @@ struct ip_port_protocol {
   if (a > b) {                                                                                                                                                 \
     return false;                                                                                                                                              \
   }
-    CHECK_GUARD(ip, o.ip);
-    CHECK_GUARD(src_port, o.src_port);
-    CHECK_GUARD(dst_port, o.dst_port);
-    CHECK_GUARD(proto, o.proto);
+        CHECK_GUARD(ip, o.ip);
+        CHECK_GUARD(src_port, o.src_port);
+        CHECK_GUARD(dst_port, o.dst_port);
+        CHECK_GUARD(proto, o.proto);
 #undef CHECK_GUARD
-    return false;
-  }
+        return false;
+    }
 };
 
 struct stats {
-  size_t blocked;
+    size_t blocked;
 
-  size_t udp_total;
-  size_t tcp_total;
+    size_t udp_total;
+    size_t tcp_total;
 
-  size_t udp_bytes_in;
-  size_t tcp_bytes_in;
+    size_t udp_bytes_in;
+    size_t tcp_bytes_in;
 
-  size_t udp_bytes_out;
-  size_t tcp_bytes_out;
+    size_t udp_bytes_out;
+    size_t tcp_bytes_out;
 };
 
 #endif

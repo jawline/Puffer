@@ -1,2 +1,2 @@
-include ':app'
+include ':Puffer'
 rootProject.name = "SecurityWall"
