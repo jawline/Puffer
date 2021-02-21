@@ -32,8 +32,7 @@ private:
   jmethodID report_block_method;
 #endif
 
-  inline void register_udp(ip_port_protocol const &id,
-                           std::shared_ptr<Socket> new_entry) {
+  inline void register_udp(ip_port_protocol const &id, std::shared_ptr<Socket> new_entry) {
     debug("UDP: New NAT %i %i\n", id.src_port, id.dst_port);
     stat.udp_total += 1;
     outbound_nat[id] = new_entry;
@@ -41,8 +40,7 @@ private:
     listen_in(new_entry->fd);
   }
 
-  inline void register_tcp(ip_port_protocol const &id,
-                           std::shared_ptr<Socket> new_entry) {
+  inline void register_tcp(ip_port_protocol const &id, std::shared_ptr<Socket> new_entry) {
     debug("TCP: New NAT %i %i\n", id.src_port, id.dst_port);
     stat.tcp_total += 1;
     outbound_nat[id] = new_entry;
@@ -104,16 +102,12 @@ private:
 
     debug("STATE: UDP: %zu / %zu (%zu / %zu) bytes TCP: %zu / %zu (%zu / %zu) "
           "EXPIRED: %zu BLOCKED (THIS SESSION): %zu",
-          udp, stat.udp_total, stat.udp_bytes_in, stat.udp_bytes_out, tcp,
-          stat.tcp_total, stat.tcp_bytes_in, stat.tcp_bytes_out, expired,
-          stat.blocked);
+          udp, stat.udp_total, stat.udp_bytes_in, stat.udp_bytes_out, tcp, stat.tcp_total, stat.tcp_bytes_in, stat.tcp_bytes_out, expired, stat.blocked);
 
 #if defined(__ANDROID__)
     log("Reporting in to Android");
-    jni_env->CallVoidMethod(
-      jni_service, report_method, (jlong)tcp, (jlong)stat.tcp_total, (jlong)udp,
-      (jlong)stat.udp_total, (jlong)(stat.tcp_bytes_in + stat.udp_bytes_in),
-      (jlong)(stat.tcp_bytes_out + stat.udp_bytes_out), (jlong)stat.blocked);
+    jni_env->CallVoidMethod(jni_service, report_method, (jlong)tcp, (jlong)stat.tcp_total, (jlong)udp, (jlong)stat.udp_total,
+                            (jlong)(stat.tcp_bytes_in + stat.udp_bytes_in), (jlong)(stat.tcp_bytes_out + stat.udp_bytes_out), (jlong)stat.blocked);
 
     // First send the TCP then the UDP sockets by looping over the list twice
     // TODO: This is pretty lazy and could be tidied up
@@ -123,8 +117,7 @@ private:
         char const *ip = inet_ntoa(conn.second->dst.sin_addr);
         jstring ip_str = jni_env->NewStringUTF(ip);
         jstring sni_str = jni_env->NewStringUTF(conn.second->stream_name);
-        jni_env->CallVoidMethod(jni_service, report_conn_method, sni_str,
-                                ip_str, conn.second->dst.sin_port);
+        jni_env->CallVoidMethod(jni_service, report_conn_method, sni_str, ip_str, conn.second->dst.sin_port);
       }
     }
 
@@ -133,8 +126,7 @@ private:
         char const *ip = inet_ntoa(conn.second->dst.sin_addr);
         jstring ip_str = jni_env->NewStringUTF(ip);
         jstring sni_str = jni_env->NewStringUTF(conn.second->stream_name);
-        jni_env->CallVoidMethod(jni_service, report_conn_method, sni_str,
-                                ip_str, conn.second->dst.sin_port);
+        jni_env->CallVoidMethod(jni_service, report_conn_method, sni_str, ip_str, conn.second->dst.sin_port);
       }
     }
 
@@ -146,15 +138,14 @@ private:
   /// This function protects us from the VPN device
   /// TODO: Figure out how to drive this from android (I think VpnBuilder can
   /// take care of it)
-  inline void protect_fd(int fd) {
+  inline void protect_fd(int fd) const {
 #if defined(__ANDROID__)
     debug("On Android protect is done by vpnService");
 #else
     struct ifreq ifr;
     memset(&ifr, 0, sizeof(ifr));
     snprintf(ifr.ifr_name, sizeof(ifr.ifr_name), "wlp2s0");
-    fatal_guard(
-      setsockopt(fd, SOL_SOCKET, SO_BINDTODEVICE, (void *)&ifr, sizeof(ifr)));
+    fatal_guard(setsockopt(fd, SOL_SOCKET, SO_BINDTODEVICE, (void *)&ifr, sizeof(ifr)));
 #endif
   }
 
@@ -193,12 +184,10 @@ private:
     report(udp, tcp, expired);
   }
 
-  inline void process_packet_udp(struct ip *hdr, char *bytes, size_t len,
-                                 timespec const &cur_time) {
+  inline void process_packet_udp(struct ip *hdr, char *bytes, size_t len, timespec const &cur_time) {
     DROP_GUARD(len >= sizeof(struct udphdr));
     struct udphdr *udp_hdr = (struct udphdr *)bytes;
-    struct ip_port_protocol id = ip_port_protocol{
-      hdr->daddr, udp_hdr->uh_sport, udp_hdr->uh_dport, IPPROTO_UDP};
+    struct ip_port_protocol id = ip_port_protocol{hdr->daddr, udp_hdr->uh_sport, udp_hdr->uh_dport, IPPROTO_UDP};
 
     auto fd_scan = outbound_nat.find(id);
     std::shared_ptr<Socket> udp_socket;
@@ -215,9 +204,8 @@ private:
       set_nonblocking(new_fd);
       DROP_GUARD(new_fd >= 0);
 
-      udp_socket = std::shared_ptr<Socket>(new UdpStream(
-        new_fd, generate_addr(hdr->saddr, udp_hdr->uh_sport),
-        generate_addr(hdr->daddr, udp_hdr->uh_dport), IPPROTO_UDP));
+      udp_socket =
+        std::shared_ptr<Socket>(new UdpStream(new_fd, generate_addr(hdr->saddr, udp_hdr->uh_sport), generate_addr(hdr->daddr, udp_hdr->uh_dport), IPPROTO_UDP));
 
       register_udp(id, udp_socket);
     }
@@ -226,23 +214,19 @@ private:
     bytes = bytes + sizeof(struct udphdr);
     len -= sizeof(struct udphdr);
 
-    if (udp_socket->on_tun(tunnel_fd, epoll_fd, (char *)hdr, (char *)udp_hdr,
-                           bytes, len, block, stat, cur_time)) {
+    if (udp_socket->on_tun(tunnel_fd, epoll_fd, (char *)hdr, (char *)udp_hdr, bytes, len, block, stat, cur_time)) {
       remove_socket(fd_scan->second);
     }
   }
 
-  inline void process_packet_tcp(struct ip *hdr, char *bytes, size_t len,
-                                 timespec const &cur_time) {
+  inline void process_packet_tcp(struct ip *hdr, char *bytes, size_t len, timespec const &cur_time) {
     ;
 
     DROP_GUARD(len >= sizeof(struct tcphdr));
     struct tcphdr *tcp_hdr = (struct tcphdr *)bytes;
-    struct ip_port_protocol id =
-      ip_port_protocol{hdr->daddr, tcp_hdr->source, tcp_hdr->dest, IPPROTO_TCP};
+    struct ip_port_protocol id = ip_port_protocol{hdr->daddr, tcp_hdr->source, tcp_hdr->dest, IPPROTO_TCP};
 
-    debug("TCP %i %i %i %i", tcp_hdr->syn, tcp_hdr->ack, tcp_hdr->fin,
-          tcp_hdr->rst);
+    debug("TCP %i %i %i %i", tcp_hdr->syn, tcp_hdr->ack, tcp_hdr->fin, tcp_hdr->rst);
     debug("Source: %s %i", inet_ntoa(in_addr{hdr->saddr}), tcp_hdr->source);
     debug("Dest: %s %i", inet_ntoa(in_addr{hdr->daddr}), tcp_hdr->dest);
 
@@ -257,11 +241,8 @@ private:
 
       debug("TCP %i: Message %zu bytes", fd_scan->second->fd, data_size);
 
-      if (fd_scan->second->on_tun(tunnel_fd, epoll_fd, (char *)hdr,
-                                  (char *)tcp_hdr, data_start, data_size, block,
-                                  stat, cur_time)) {
-        debug("TCP %i: on_tun requested to be removed from NAT",
-              fd_scan->second->fd);
+      if (fd_scan->second->on_tun(tunnel_fd, epoll_fd, (char *)hdr, (char *)tcp_hdr, data_start, data_size, block, stat, cur_time)) {
+        debug("TCP %i: on_tun requested to be removed from NAT", fd_scan->second->fd);
         remove_socket(fd_scan->second);
       }
     } else {
@@ -270,15 +251,11 @@ private:
       // (is it a SYN) If this is not the SYN first packet then something is
       // wrong. send an RST and drop
       if (!(tcp_hdr->syn && !tcp_hdr->ack)) {
-        debug("TCP: Not initial SYN %i %i %i", tcp_hdr->syn, tcp_hdr->ack,
-              tcp_hdr->fin);
+        debug("TCP: Not initial SYN %i %i %i", tcp_hdr->syn, tcp_hdr->ack, tcp_hdr->fin);
         for (auto it : outbound_nat) {
-          debug("NAT entry list: %s %i %i %i", inet_ntoa(in_addr{it.first.ip}),
-                it.first.src_port, it.first.dst_port, it.first.proto);
+          debug("NAT entry list: %s %i %i %i", inet_ntoa(in_addr{it.first.ip}), it.first.src_port, it.first.dst_port, it.first.proto);
         }
-        TcpStream::return_tcp_rst(tunnel_fd,
-                                  generate_addr(hdr->saddr, tcp_hdr->source),
-                                  generate_addr(hdr->daddr, tcp_hdr->dest));
+        TcpStream::return_tcp_rst(tunnel_fd, generate_addr(hdr->saddr, tcp_hdr->source), generate_addr(hdr->daddr, tcp_hdr->dest));
         return;
       }
 
@@ -300,9 +277,7 @@ private:
       protect_fd(new_fd);
 
       auto tcp_socket = std::shared_ptr<Socket>(
-        new TcpStream(new_fd, generate_addr(hdr->saddr, tcp_hdr->source),
-                      generate_addr(hdr->daddr, tcp_hdr->dest), IPPROTO_TCP,
-                      ntohl(tcp_hdr->seq)));
+        new TcpStream(new_fd, generate_addr(hdr->saddr, tcp_hdr->source), generate_addr(hdr->daddr, tcp_hdr->dest), IPPROTO_TCP, ntohl(tcp_hdr->seq)));
 
       register_tcp(id, tcp_socket);
     }
@@ -315,8 +290,7 @@ private:
     debug("ICMP currently unsupported - TODO");
   }
 
-  inline void process_tun_packet(char bytes[MTU], size_t len,
-                                 timespec const &cur_time) {
+  inline void process_tun_packet(char bytes[MTU], size_t len, timespec const &cur_time) {
 
     // Check we received a full IP packet
     DROP_GUARD(len >= sizeof(struct ip));
@@ -372,8 +346,7 @@ private:
     char bytes[MTU];
     ssize_t readb;
     size_t count = 0;
-    while (count++ < MAX_READS_ITER &&
-           (readb = read(tunnel_fd, bytes, MTU)) > 0) {
+    while (count++ < MAX_READS_ITER && (readb = read(tunnel_fd, bytes, MTU)) > 0) {
       debug("%zu", count);
       process_tun_packet(bytes, readb, cur_time);
     }
@@ -384,8 +357,7 @@ private:
     do_nat_cleanup(cur_time);
   }
 
-  inline void socket_on_network_event(int events, timespec const &cur_time,
-                                      std::shared_ptr<Socket> const &socket) {
+  inline void socket_on_network_event(int events, timespec const &cur_time, std::shared_ptr<Socket> const &socket) {
     bool should_remove = false;
 
     if (events & EPOLLIN) {
@@ -396,8 +368,7 @@ private:
       sockaddr_in addr;
       socklen_t addr_len = sizeof(addr);
 
-      ssize_t len =
-        recvfrom(socket->fd, buf, 65536, 0, (sockaddr *)&addr, &addr_len);
+      ssize_t len = recvfrom(socket->fd, buf, 65536, 0, (sockaddr *)&addr, &addr_len);
       debug("SOCK: %i read sz: %li", socket->fd, len);
 
       // Split the TCP read up into smaller more manageable chunks
@@ -428,8 +399,7 @@ private:
     }
   }
 
-  inline void on_network_event(epoll_event const &event,
-                               timespec const &cur_time) {
+  inline void on_network_event(epoll_event const &event, timespec const &cur_time) {
     debug("Network socket event");
     auto event_fd = event.data.fd;
     auto events = event.events;
@@ -446,15 +416,12 @@ private:
 public:
 #if defined(__ANDROID__)
 
-  EventLoop(int tunnel_fd, int quit_fd, BlockList const &list, JNIEnv *jni_env,
-            jobject jni_service)
-    : tunnel_fd(tunnel_fd), quit_fd(quit_fd), block(list), jni_env(jni_env),
-      jni_service(jni_service){
+  EventLoop(int tunnel_fd, int quit_fd, BlockList const &list, JNIEnv *jni_env, jobject jni_service)
+    : tunnel_fd(tunnel_fd), quit_fd(quit_fd), block(list), jni_env(jni_env), jni_service(jni_service){
 #else
-  EventLoop(int tunnel_fd, int quit_fd, BlockList const &list)
-    : tunnel_fd(tunnel_fd), quit_fd(quit_fd), block(list) {
+  EventLoop(int tunnel_fd, int quit_fd, BlockList const &list) : tunnel_fd(tunnel_fd), quit_fd(quit_fd), block(list) {
 #endif
-        stat = {0};
+                                                                               stat = {0};
 
   epoll_fd = epoll_create(600000);
 
@@ -462,15 +429,10 @@ public:
 
 #if defined(__ANDROID__)
   jni_service_class = (jni_env)->GetObjectClass(jni_service);
-  report_method =
-    jni_env->GetMethodID(jni_service_class, "report", "(JJJJJJJ)V");
-  report_conn_method =
-    jni_env->GetMethodID(jni_service_class, "reportConn",
-                         "(Ljava/lang/String;Ljava/lang/String;I)V");
-  report_finished =
-    jni_env->GetMethodID(jni_service_class, "reportFinished", "()V");
-  report_block_method = jni_env->GetMethodID(jni_service_class, "reportBlock",
-                                             "(Ljava/lang/String;)V");
+  report_method = jni_env->GetMethodID(jni_service_class, "report", "(JJJJJJJ)V");
+  report_conn_method = jni_env->GetMethodID(jni_service_class, "reportConn", "(Ljava/lang/String;Ljava/lang/String;I)V");
+  report_finished = jni_env->GetMethodID(jni_service_class, "reportFinished", "()V");
+  report_block_method = jni_env->GetMethodID(jni_service_class, "reportBlock", "(Ljava/lang/String;)V");
 #endif
 
   debug("Epoll FD: %i", epoll_fd);

@@ -10,11 +10,9 @@
 class UdpStream : public Socket {
 private:
 public:
-  UdpStream(int fd, sockaddr_in src, sockaddr_in dst, uint8_t proto)
-    : Socket(fd, src, dst, proto) {}
+  UdpStream(int fd, sockaddr_in src, sockaddr_in dst, uint8_t proto) : Socket(fd, src, dst, proto) {}
 
-  bool on_tun(int tun_fd, int epoll_fd, char *ip, char *proto, char *data,
-              size_t data_size, BlockList const &block, struct stats &stats,
+  bool on_tun(int tun_fd, int epoll_fd, char *ip, char *proto, char *data, size_t data_size, BlockList const &block, struct stats &stats,
               timespec const &cur_time) {
     auto ip_hdr = (struct ip *)ip;
     auto udp_hdr = (struct udphdr *)proto;
@@ -38,12 +36,9 @@ public:
 
   bool before_tun(int tun_fd, int epoll_fd) { return false; }
 
-  bool after_tun(int tun_fd, int epoll_fd, timespec const &cur_time) {
-    return false;
-  }
+  bool after_tun(int tun_fd, int epoll_fd, timespec const &cur_time) { return false; }
 
-  bool on_data(int tun_fd, int epoll_fd, char *data, size_t data_size,
-               struct stats &stats, timespec const &cur_time) {
+  bool on_data(int tun_fd, int epoll_fd, char *data, size_t data_size, struct stats &stats, timespec const &cur_time) {
     char ipp[MTU];
 
     ssize_t pkt_sz = assemble_udp_packet(ipp, MTU, data, data_size, dst, src);
@@ -57,10 +52,7 @@ public:
     return false;
   }
 
-  bool on_sock(int tun_fd, int epoll_fd, int events, struct stats &stats,
-               timespec const &cur_time) {
-    return false;
-  }
+  bool on_sock(int tun_fd, int epoll_fd, int events, struct stats &stats, timespec const &cur_time) { return false; }
 };
 
 #endif // SECURITYWALL_UDP_H

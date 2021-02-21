@@ -73,19 +73,16 @@ struct ip_port_protocol {
   uint16_t dst_port;
   uint8_t proto;
 
-  bool operator==(const ip_port_protocol &o) const {
-    return ip == o.ip && src_port == o.src_port && dst_port == o.dst_port &&
-           proto == o.proto;
-  }
+  bool operator==(const ip_port_protocol &o) const { return ip == o.ip && src_port == o.src_port && dst_port == o.dst_port && proto == o.proto; }
 
   // Impl comparison to allow use in a map
   bool operator<(const ip_port_protocol &o) const {
-#define CHECK_GUARD(a, b)                                                      \
-  if (a < b) {                                                                 \
-    return true;                                                               \
-  }                                                                            \
-  if (a > b) {                                                                 \
-    return false;                                                              \
+#define CHECK_GUARD(a, b)                                                                                                                                      \
+  if (a < b) {                                                                                                                                                 \
+    return true;                                                                                                                                               \
+  }                                                                                                                                                            \
+  if (a > b) {                                                                                                                                                 \
+    return false;                                                                                                                                              \
   }
     CHECK_GUARD(ip, o.ip);
     CHECK_GUARD(src_port, o.src_port);

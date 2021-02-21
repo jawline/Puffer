@@ -32,7 +32,6 @@
 // 255 bytes + NULL terminator is the max length of an SNI
 const static size_t MAX_FQDN_LENGTH = 256;
 
-int parse_tls_header(const uint8_t *data, size_t data_len,
-                     char hostname[MAX_FQDN_LENGTH]);
+int parse_tls_header(const uint8_t *data, size_t data_len, char hostname[MAX_FQDN_LENGTH]);
 
 #endif

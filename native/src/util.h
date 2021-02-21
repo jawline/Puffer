@@ -30,18 +30,15 @@ static inline void set_nonblocking(int fd) {
 
 static inline void set_fast_tcp(int fd) {
   const int yes = 1;
-  fatal_guard(
-    setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, (void *)&yes, sizeof(yes)));
-  fatal_guard(
-    setsockopt(fd, IPPROTO_TCP, TCP_QUICKACK, (void *)&yes, sizeof(yes)));
+  fatal_guard(setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, (void *)&yes, sizeof(yes)));
+  fatal_guard(setsockopt(fd, IPPROTO_TCP, TCP_QUICKACK, (void *)&yes, sizeof(yes)));
 }
 
 // First try to modify the epoll for the fd if it is already registered,
 // otherwise try to add it. Abort if neither succeeds
 static inline void epoll_listen(int epoll_fd, int fd, uint32_t flags) {
 
-  struct epoll_event event =
-  epoll_event{events : flags, data : epoll_data{fd : fd}};
+  struct epoll_event event = epoll_event{events : flags, data : epoll_data{fd : fd}};
 
   if (epoll_ctl(epoll_fd, EPOLL_CTL_MOD, fd, &event) == 0) {
     return;

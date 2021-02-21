@@ -49,8 +49,7 @@
 
 static int parse_extensions(const uint8_t *, size_t, char[MAX_FQDN_LENGTH]);
 
-static int parse_server_name_extension(const uint8_t *, size_t,
-                                       char[MAX_FQDN_LENGTH]);
+static int parse_server_name_extension(const uint8_t *, size_t, char[MAX_FQDN_LENGTH]);
 
 /* Parse a TLS packet for the Server Name Indication extension in the client
  * hello handshake, returning the first servername found (pointer to static
@@ -65,8 +64,7 @@ static int parse_server_name_extension(const uint8_t *, size_t,
  *  -4   - malloc failure
  *  < -4 - Invalid TLS client hello
  */
-int parse_tls_header(const uint8_t *data, size_t data_len,
-                     char hostname[MAX_FQDN_LENGTH]) {
+int parse_tls_header(const uint8_t *data, size_t data_len, char hostname[MAX_FQDN_LENGTH]) {
   uint8_t tls_content_type;
   uint8_t tls_version_major;
   uint8_t tls_version_minor;
@@ -97,9 +95,7 @@ int parse_tls_header(const uint8_t *data, size_t data_len,
   tls_version_major = data[1];
   tls_version_minor = data[2];
   if (tls_version_major < 3) {
-    debug("Received SSL %" PRIu8 ".%" PRIu8
-          " handshake which can not support SNI.",
-          tls_version_major, tls_version_minor);
+    debug("Received SSL %" PRIu8 ".%" PRIu8 " handshake which can not support SNI.", tls_version_major, tls_version_minor);
 
     return -2;
   }
@@ -167,8 +163,7 @@ int parse_tls_header(const uint8_t *data, size_t data_len,
   return parse_extensions(data + pos, len, hostname);
 }
 
-static int parse_extensions(const uint8_t *data, size_t data_len,
-                            char hostname[MAX_FQDN_LENGTH]) {
+static int parse_extensions(const uint8_t *data, size_t data_len, char hostname[MAX_FQDN_LENGTH]) {
   size_t pos = 0;
   size_t len;
 
@@ -194,8 +189,7 @@ static int parse_extensions(const uint8_t *data, size_t data_len,
   return -2;
 }
 
-static int parse_server_name_extension(const uint8_t *data, size_t data_len,
-                                       char hostname[MAX_FQDN_LENGTH]) {
+static int parse_server_name_extension(const uint8_t *data, size_t data_len, char hostname[MAX_FQDN_LENGTH]) {
   size_t pos = 2; /* skip server name list length */
   size_t len;
 

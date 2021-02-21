@@ -8,10 +8,8 @@
 #include "core.h"
 #include <sys/mman.h>
 
-extern "C" JNIEXPORT void JNICALL
-Java_com_parsed_securitywall_SecurityFilter_launch(JNIEnv *env, jobject service,
-                                                   jint tunfd, jint quitfd,
-                                                   jstring blockListStr) {
+extern "C" JNIEXPORT void JNICALL Java_com_parsed_securitywall_SecurityFilter_launch(JNIEnv *env, jobject service, jint tunfd, jint quitfd,
+                                                                                     jstring blockListStr) {
 
   const char *cstr = env->GetStringUTFChars(blockListStr, NULL);
 
