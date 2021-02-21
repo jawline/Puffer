@@ -80,13 +80,15 @@ private:
 
   inline void remove_socket(std::shared_ptr<Socket> socket) {
 
-    //TODO: This could be done more cleanly if the sockets could report their reason for removal directly
-    // If the socket is being removed because it was blocked then report it to the java app
+    // TODO: This could be done more cleanly if the sockets could report their
+    // reason for removal directly
+    // If the socket is being removed because it was blocked then report it to
+    // the java app
 #if defined(__ANDROID__)
-if (socket->blocked) {
-    jstring sni_str = jni_env->NewStringUTF(socket->stream_name);
-    jni_env->CallVoidMethod(jni_service, report_block_method, sni_str);
-}
+    if (socket->blocked) {
+      jstring sni_str = jni_env->NewStringUTF(socket->stream_name);
+      jni_env->CallVoidMethod(jni_service, report_block_method, sni_str);
+    }
 #endif
 
     auto fd = socket->fd;
@@ -121,8 +123,8 @@ if (socket->blocked) {
         char const *ip = inet_ntoa(conn.second->dst.sin_addr);
         jstring ip_str = jni_env->NewStringUTF(ip);
         jstring sni_str = jni_env->NewStringUTF(conn.second->stream_name);
-        jni_env->CallVoidMethod(jni_service, report_conn_method, sni_str, ip_str,
-                                conn.second->dst.sin_port);
+        jni_env->CallVoidMethod(jni_service, report_conn_method, sni_str,
+                                ip_str, conn.second->dst.sin_port);
       }
     }
 
@@ -131,8 +133,8 @@ if (socket->blocked) {
         char const *ip = inet_ntoa(conn.second->dst.sin_addr);
         jstring ip_str = jni_env->NewStringUTF(ip);
         jstring sni_str = jni_env->NewStringUTF(conn.second->stream_name);
-        jni_env->CallVoidMethod(jni_service, report_conn_method, sni_str, ip_str,
-                                conn.second->dst.sin_port);
+        jni_env->CallVoidMethod(jni_service, report_conn_method, sni_str,
+                                ip_str, conn.second->dst.sin_port);
       }
     }
 
@@ -259,7 +261,7 @@ if (socket->blocked) {
                                   (char *)tcp_hdr, data_start, data_size, block,
                                   stat, cur_time)) {
         debug("TCP %i: on_tun requested to be removed from NAT",
-            fd_scan->second->fd);
+              fd_scan->second->fd);
         remove_socket(fd_scan->second);
       }
     } else {
@@ -327,8 +329,8 @@ if (socket->blocked) {
 
     // TODO: This is nice for me but screws with Conor. but should be an option
     // Drop the multicast ranges
-    //uint8_t first_octet = ntohl(hdr->daddr) >> 24;
-    //DROP_GUARD(first_octet < 224 || first_octet > 239);
+    // uint8_t first_octet = ntohl(hdr->daddr) >> 24;
+    // DROP_GUARD(first_octet < 224 || first_octet > 239);
 
     size_t ip_header_size_bytes = hdr->ihl << 2;
 
@@ -462,12 +464,13 @@ public:
   jni_service_class = (jni_env)->GetObjectClass(jni_service);
   report_method =
     jni_env->GetMethodID(jni_service_class, "report", "(JJJJJJJ)V");
-  report_conn_method=
-            jni_env->GetMethodID(jni_service_class, "reportConn", "(Ljava/lang/String;Ljava/lang/String;I)V");
+  report_conn_method =
+    jni_env->GetMethodID(jni_service_class, "reportConn",
+                         "(Ljava/lang/String;Ljava/lang/String;I)V");
   report_finished =
-            jni_env->GetMethodID(jni_service_class, "reportFinished", "()V");
-  report_block_method =
-            jni_env->GetMethodID(jni_service_class, "reportBlock", "(Ljava/lang/String;)V");
+    jni_env->GetMethodID(jni_service_class, "reportFinished", "()V");
+  report_block_method = jni_env->GetMethodID(jni_service_class, "reportBlock",
+                                             "(Ljava/lang/String;)V");
 #endif
 
   debug("Epoll FD: %i", epoll_fd);

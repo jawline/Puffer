@@ -2,12 +2,12 @@
 #define SECURITYWALL_SOCKET_H
 
 #include "block_list.h"
+#include "tls.h"
 #include <cstdint>
 #include <cstdlib>
 #include <netinet/in.h>
 #include <sys/socket.h>
 #include <time.h>
-#include "tls.h"
 
 class Socket {
 public:

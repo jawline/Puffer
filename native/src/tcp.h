@@ -44,7 +44,6 @@ public:
 
 class TcpStream : public Socket {
 private:
-
   uint32_t them_seq;
   uint32_t them_ack;
 
@@ -255,7 +254,7 @@ public:
       them_seq += 1;
       shutdown(fd, SHUT_WR);
       debug("TCP %i: Client has shutdown write half of stream %u %u %i", fd,
-          us_seq, them_ack, close_rd);
+            us_seq, them_ack, close_rd);
       close_wr = true;
       close_wr_time = cur_time;
       should_ack = true;
@@ -264,8 +263,8 @@ public:
     // If we have sent a FIN then the final ACK will close the session
     // If they have acked up until the last byte of real data we close
     if (tcp_hdr->ack && close_rd && !ack_rd && them_ack >= us_seq) {
-      debug("TCP %i: Stream has acknowledged FIN %u %u %u with %zu remaining", fd,
-          tcp_seq, them_ack, us_seq, unacknowledged.size());
+      debug("TCP %i: Stream has acknowledged FIN %u %u %u with %zu remaining",
+            fd, tcp_seq, them_ack, us_seq, unacknowledged.size());
       ack_rd = true;
     }
 
