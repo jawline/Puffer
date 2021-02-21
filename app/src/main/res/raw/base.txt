@@ -3556,7 +3556,7 @@ everestads.net
 dco-assets.everestads.net
 everesttech.net
 ads.everesttech.net
-c.evidon.com
+# c.evidon.com
 iabmap.evidon.com
 info.evidon.com
 l.evidon.com

@@ -13,7 +13,9 @@ import java.io.*
 class SecurityService : VpnService(), Handler.Callback {
     private var mSecurityFilter: SecurityFilter? = null
     private var mStatistics: SecurityStatistics? = null
+
     val mCurrentConns = ArrayList<ConnectionInfo>()
+    val mSessionBlocked = HashMap<String, Long>();
 
     private val mBinder: IBinder = LocalBinder()
 
@@ -102,6 +104,11 @@ class SecurityService : VpnService(), Handler.Callback {
 
     fun reportConn(info: ConnectionInfo) {
         mCurrentConns.add(info)
+    }
+
+    fun reportBlock(name: String) {
+        val timesBlocked = mSessionBlocked.getOrDefault(name, 0) + 1
+        mSessionBlocked[name] = timesBlocked
     }
 
     fun reportFinished() {

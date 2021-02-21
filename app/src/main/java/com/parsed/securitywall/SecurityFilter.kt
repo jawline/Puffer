@@ -60,6 +60,10 @@ class SecurityFilter(service: SecurityService, blockList: String) : Thread() {
         mService.reportConn(ConnectionInfo(sni, ip, port))
     }
 
+    fun reportBlock(sni: String) {
+        mService.reportBlock(sni)
+    }
+
     fun reportFinished() {
         mService.reportFinished();
     }

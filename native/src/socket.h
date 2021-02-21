@@ -16,13 +16,14 @@ public:
     this->src = src;
     this->dst = dst;
     this->proto = proto;
+    this->blocked = false;
     clock_gettime(CLOCK_MONOTONIC, &last_use);
     strcpy(stream_name, "N/A");
   }
 
   ~Socket() {
     if (fd >= 0) {
-      log("TCP %i: closing file descriptor", fd);
+      debug("TCP %i: closing file descriptor", fd);
       close(fd);
       fd = -1;
     }
@@ -34,6 +35,9 @@ public:
   sockaddr_in dst;
 
   char stream_name[MAX_FQDN_LENGTH];
+
+  // Set to true if the reason the stream was terminated is due to a block
+  bool blocked;
 
   uint8_t proto;
   struct timespec last_use;

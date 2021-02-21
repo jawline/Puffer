@@ -4,7 +4,7 @@ android:layout_height="200dp">
     <TextView
         android:id="@+id/sni"
         android:padding="10dp"
-        android:maxWidth="160dp"
+        android:maxWidth="200dp"
         android:text="" />
 
     <TextView

@@ -189,7 +189,7 @@ public:
     }
 
     if (tcp_hdr->ack && sent_syn_ack && !recv_first_ack) {
-      log("TCP %i: Socket ready for data", fd);
+      debug("TCP %i: Socket ready for data", fd);
       recv_first_ack = true;
       stop_listen(epoll_fd, fd);
       listen_tcp(epoll_fd, fd);
@@ -219,7 +219,8 @@ public:
 
       if (first_packet) {
         if (should_block(data, data_size, block)) {
-          log("SNI: Dropping connection");
+          debug("SNI: Dropping connection");
+          blocked = true;
           stats.blocked += 1;
           shutdown_send(tun_fd, epoll_fd, cur_time);
         }
@@ -253,7 +254,7 @@ public:
     if (tcp_hdr->fin) {
       them_seq += 1;
       shutdown(fd, SHUT_WR);
-      log("TCP %i: Client has shutdown write half of stream %u %u %i", fd,
+      debug("TCP %i: Client has shutdown write half of stream %u %u %i", fd,
           us_seq, them_ack, close_rd);
       close_wr = true;
       close_wr_time = cur_time;
@@ -263,7 +264,7 @@ public:
     // If we have sent a FIN then the final ACK will close the session
     // If they have acked up until the last byte of real data we close
     if (tcp_hdr->ack && close_rd && !ack_rd && them_ack >= us_seq) {
-      log("TCP %i: Stream has acknowledged FIN %u %u %u with %zu remaining", fd,
+      debug("TCP %i: Stream has acknowledged FIN %u %u %u with %zu remaining", fd,
           tcp_seq, them_ack, us_seq, unacknowledged.size());
       ack_rd = true;
     }

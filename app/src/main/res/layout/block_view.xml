@@ -20,7 +20,7 @@
 
         <TextView
             android:padding="10dp"
-            android:text="IP"
+            android:text="Count"
             android:textStyle="bold" />
     </TableRow>
 

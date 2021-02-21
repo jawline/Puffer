@@ -29,6 +29,7 @@ private:
   jmethodID report_method;
   jmethodID report_conn_method;
   jmethodID report_finished;
+  jmethodID report_block_method;
 #endif
 
   inline void register_udp(ip_port_protocol const &id,
@@ -77,7 +78,18 @@ private:
     }
   }
 
-  inline void remove_fd_from_nat(int fd) {
+  inline void remove_socket(std::shared_ptr<Socket> socket) {
+
+    //TODO: This could be done more cleanly if the sockets could report their reason for removal directly
+    // If the socket is being removed because it was blocked then report it to the java app
+#if defined(__ANDROID__)
+if (socket->blocked) {
+    jstring sni_str = jni_env->NewStringUTF(socket->stream_name);
+    jni_env->CallVoidMethod(jni_service, report_block_method, sni_str);
+}
+#endif
+
+    auto fd = socket->fd;
     auto it = inbound_nat.find(fd);
     if (it != inbound_nat.end()) {
       debug("GC: Removing %i from NAT", fd);
@@ -95,6 +107,7 @@ private:
           stat.blocked);
 
 #if defined(__ANDROID__)
+    log("Reporting in to Android");
     jni_env->CallVoidMethod(
       jni_service, report_method, (jlong)tcp, (jlong)stat.tcp_total, (jlong)udp,
       (jlong)stat.udp_total, (jlong)(stat.tcp_bytes_in + stat.udp_bytes_in),
@@ -213,7 +226,7 @@ private:
 
     if (udp_socket->on_tun(tunnel_fd, epoll_fd, (char *)hdr, (char *)udp_hdr,
                            bytes, len, block, stat, cur_time)) {
-      remove_fd_from_nat(fd_scan->second->fd);
+      remove_socket(fd_scan->second);
     }
   }
 
@@ -245,9 +258,9 @@ private:
       if (fd_scan->second->on_tun(tunnel_fd, epoll_fd, (char *)hdr,
                                   (char *)tcp_hdr, data_start, data_size, block,
                                   stat, cur_time)) {
-        log("TCP %i: on_tun requested to be removed from NAT",
+        debug("TCP %i: on_tun requested to be removed from NAT",
             fd_scan->second->fd);
-        remove_fd_from_nat(fd_scan->second->fd);
+        remove_socket(fd_scan->second);
       }
     } else {
 
@@ -312,9 +325,10 @@ private:
     DROP_GUARD(hdr->version == 4);
     DROP_GUARD(hdr->daddr != 0xffffffff);
 
+    // TODO: This is nice for me but screws with Conor. but should be an option
     // Drop the multicast ranges
-    uint8_t first_octet = ntohl(hdr->daddr) >> 24;
-    DROP_GUARD(first_octet < 224 || first_octet > 239);
+    //uint8_t first_octet = ntohl(hdr->daddr) >> 24;
+    //DROP_GUARD(first_octet < 224 || first_octet > 239);
 
     size_t ip_header_size_bytes = hdr->ihl << 2;
 
@@ -345,6 +359,7 @@ private:
 
   inline void setup_timer() {
     timer_fd = timerfd_create(CLOCK_MONOTONIC, TFD_NONBLOCK);
+    fatal_guard(timer_fd);
     struct itimerspec timespec = {0};
     timespec.it_value.tv_sec = 5;
     timespec.it_interval.tv_sec = 5;
@@ -407,7 +422,7 @@ private:
 
     if (should_remove) {
       log("SOCK: %i removed from NAT", socket->fd);
-      remove_fd_from_nat(socket->fd);
+      remove_socket(socket);
     }
   }
 
@@ -442,7 +457,6 @@ public:
   epoll_fd = epoll_create(600000);
 
   fatal_guard(epoll_fd);
-  fatal_guard(timer_fd);
 
 #if defined(__ANDROID__)
   jni_service_class = (jni_env)->GetObjectClass(jni_service);
@@ -452,6 +466,8 @@ public:
             jni_env->GetMethodID(jni_service_class, "reportConn", "(Ljava/lang/String;Ljava/lang/String;I)V");
   report_finished =
             jni_env->GetMethodID(jni_service_class, "reportFinished", "()V");
+  report_block_method =
+            jni_env->GetMethodID(jni_service_class, "reportBlock", "(Ljava/lang/String;)V");
 #endif
 
   debug("Epoll FD: %i", epoll_fd);
