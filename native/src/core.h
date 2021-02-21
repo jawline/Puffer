@@ -413,72 +413,74 @@ private:
     }
   }
 
-public:
+  inline void setup_jni_env() {
 #if defined(__ANDROID__)
+    jni_service_class = (jni_env)->GetObjectClass(jni_service);
+    report_method = jni_env->GetMethodID(jni_service_class, "report", "(JJJJJJJ)V");
+    report_conn_method = jni_env->GetMethodID(jni_service_class, "reportConn", "(Ljava/lang/String;Ljava/lang/String;I)V");
+    report_finished = jni_env->GetMethodID(jni_service_class, "reportFinished", "()V");
+    report_block_method = jni_env->GetMethodID(jni_service_class, "reportBlock", "(Ljava/lang/String;)V");
+#endif
+  }
 
+public:
+  void user_space_ip_proxy() {
+
+    setup_timer();
+
+    struct epoll_event events[MAX_EVENTS];
+
+    set_nonblocking(tunnel_fd);
+
+    debug("Preparing epoll listeners");
+    listen_in(tunnel_fd);
+    listen_in(quit_fd);
+    listen_in(timer_fd);
+    debug("Setup epoll listeners");
+
+    struct timespec cur_time;
+
+    while (true) {
+      ssize_t event_count = epoll_wait(epoll_fd, events, MAX_EVENTS, -1);
+      clock_gettime(CLOCK_MONOTONIC, &cur_time);
+      debug("Epoll %i events", event_count);
+      for (size_t i = 0; i < event_count; i++) {
+        if (events[i].data.fd == tunnel_fd) {
+          for (auto socket : inbound_nat) {
+            socket.second->before_tun(tunnel_fd, epoll_fd);
+          }
+          on_tun_in(cur_time);
+          // TODO: Figure a better way of doing this later, maybe defer it to 1
+          // every 100ms or something
+          for (auto socket : inbound_nat) {
+            socket.second->after_tun(tunnel_fd, epoll_fd, cur_time);
+          }
+        } else if (events[i].data.fd == quit_fd) {
+          log("Loop FD called, cleaning up");
+          return;
+        } else if (events[i].data.fd == timer_fd) {
+          on_timer_in(cur_time);
+        } else {
+          on_network_event(events[i], cur_time);
+        }
+      }
+    }
+  }
+
+#if defined(__ANDROID__)
   EventLoop(int tunnel_fd, int quit_fd, BlockList const &list, JNIEnv *jni_env, jobject jni_service)
     : tunnel_fd(tunnel_fd), quit_fd(quit_fd), block(list), jni_env(jni_env), jni_service(jni_service){
 #else
   EventLoop(int tunnel_fd, int quit_fd, BlockList const &list) : tunnel_fd(tunnel_fd), quit_fd(quit_fd), block(list) {
 #endif
                                                                                stat = {0};
-
   epoll_fd = epoll_create(600000);
-
   fatal_guard(epoll_fd);
 
-#if defined(__ANDROID__)
-  jni_service_class = (jni_env)->GetObjectClass(jni_service);
-  report_method = jni_env->GetMethodID(jni_service_class, "report", "(JJJJJJJ)V");
-  report_conn_method = jni_env->GetMethodID(jni_service_class, "reportConn", "(Ljava/lang/String;Ljava/lang/String;I)V");
-  report_finished = jni_env->GetMethodID(jni_service_class, "reportFinished", "()V");
-  report_block_method = jni_env->GetMethodID(jni_service_class, "reportBlock", "(Ljava/lang/String;)V");
-#endif
+  // This only does something in Java-mode (Android)
+  setup_jni_env();
 
   debug("Epoll FD: %i", epoll_fd);
-}
-
-void user_space_ip_proxy() {
-
-  setup_timer();
-
-  struct epoll_event events[MAX_EVENTS];
-
-  set_nonblocking(tunnel_fd);
-
-  debug("Preparing epoll listeners");
-  listen_in(tunnel_fd);
-  listen_in(quit_fd);
-  listen_in(timer_fd);
-  debug("Setup epoll listeners");
-
-  struct timespec cur_time;
-
-  while (true) {
-    ssize_t event_count = epoll_wait(epoll_fd, events, MAX_EVENTS, -1);
-    clock_gettime(CLOCK_MONOTONIC, &cur_time);
-    debug("Epoll %i events", event_count);
-    for (size_t i = 0; i < event_count; i++) {
-      if (events[i].data.fd == tunnel_fd) {
-        for (auto socket : inbound_nat) {
-          socket.second->before_tun(tunnel_fd, epoll_fd);
-        }
-        on_tun_in(cur_time);
-        // TODO: Figure a better way of doing this later, maybe defer it to 1
-        // every 100ms or something
-        for (auto socket : inbound_nat) {
-          socket.second->after_tun(tunnel_fd, epoll_fd, cur_time);
-        }
-      } else if (events[i].data.fd == quit_fd) {
-        log("Loop FD called, cleaning up");
-        return;
-      } else if (events[i].data.fd == timer_fd) {
-        on_timer_in(cur_time);
-      } else {
-        on_network_event(events[i], cur_time);
-      }
-    }
-  }
 }
 }
 ;
