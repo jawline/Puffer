@@ -1,6 +1,5 @@
 package com.parsed.securitywall
 
-import android.app.Activity
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
@@ -11,12 +10,13 @@ import android.view.View
 import android.widget.LinearLayout
 import android.widget.TableLayout
 import android.widget.TextView
+import androidx.appcompat.app.AppCompatActivity
 import androidx.databinding.Observable
 import com.google.android.material.tabs.TabLayout
 import com.google.android.material.tabs.TabLayout.OnTabSelectedListener
 
 
-class LiveView : Activity() {
+class LiveView : AppCompatActivity() {
     private var mSecurityService: SecurityService? = null
     private var mLiveView: View? = null
     private var mBlockView: View? = null
@@ -27,6 +27,11 @@ class LiveView : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         bindSecurityService()
+
+        try {
+            this.supportActionBar!!.hide()
+        } catch (e: NullPointerException) {
+        }
 
         setContentView(R.layout.analysis_view)
 

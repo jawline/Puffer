@@ -8,6 +8,12 @@
 #include "util.h"
 #include <algorithm>
 
+enum LanBlockLevel {
+  NO_BLOCK = 0,
+  UPNP_BLOCK = 1,
+  LAN_BLOCK = 2,
+};
+
 class EventLoop {
 private:
     stats stat;
@@ -15,6 +21,7 @@ private:
     int tunnel_fd;
     int epoll_fd;
     int quit_fd;
+    LanBlockLevel lanBlockLevel;
     int timer_fd;
 
     std::map<ip_port_protocol, std::shared_ptr<Socket>> outbound_nat;
@@ -491,16 +498,17 @@ public:
 
 #if defined(__ANDROID__)
 
-    EventLoop(int tunnel_fd, int quit_fd, BlockList const &list, JNIEnv *jni_env,
+    EventLoop(int tunnel_fd, int quit_fd, int lanBlockLevel, BlockList const &list, JNIEnv *jni_env,
               jobject jni_service)
             : tunnel_fd(tunnel_fd), quit_fd(quit_fd), block(list), jni_env(jni_env),
               jni_service(jni_service) {
 #else
-        EventLoop(int tunnel_fd, int quit_fd, BlockList const &list) : tunnel_fd(tunnel_fd), quit_fd(quit_fd), block(list) {
+        EventLoop(int tunnel_fd, int quit_fd, int lanBlockLevel, BlockList const &list) : tunnel_fd(tunnel_fd), quit_fd(quit_fd), block(list) {
 #endif
         stat = {0};
         epoll_fd = epoll_create(600000);
         fatal_guard(epoll_fd);
+        this->lanBlockLevel = static_cast<LanBlockLevel>(lanBlockLevel);
 
         // This only does something in Java-mode (Android)
         setup_jni_env();

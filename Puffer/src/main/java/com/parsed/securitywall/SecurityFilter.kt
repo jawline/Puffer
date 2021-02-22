@@ -20,7 +20,7 @@ class SecurityFilter(service: SecurityService, blockList: String) : Thread() {
     val mService = service
     var quit: FileOutputStream? = null
 
-    external fun launch(fd: Int, quit_fd: Int, blockList: String)
+    external fun launch(fd: Int, quit_fd: Int, lan_block_level: Int, blockList: String)
 
     fun protect(fd: Int) {
         Log.d(TAG, "Protected socket: $fd")
@@ -78,6 +78,7 @@ class SecurityFilter(service: SecurityService, blockList: String) : Thread() {
 
     @RequiresApi(Build.VERSION_CODES.LOLLIPOP)
     override fun run() {
+        val settings = SettingsActivity.Settings(mService)
         val vpnBuilder = mService.Builder()
 
         Log.i(TAG, "Starting SecurityFilter")
@@ -105,7 +106,7 @@ class SecurityFilter(service: SecurityService, blockList: String) : Thread() {
         quit = FileOutputStream(quitPipe[1].fileDescriptor)
 
         Log.d(TAG, "Entering native portion")
-        launch(tunFd, quitPipe[0].fd, blockList)
+        launch(tunFd, quitPipe[0].fd, settings.nativeBlockMode, blockList)
 
         interfaceFileDescriptor.close()
         quitPipe[0].close()

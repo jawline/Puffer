@@ -25,7 +25,7 @@ int main() {
   BlockList b(blist);
 
   debug("Creating event loop");
-  EventLoop loop(tunfd, fds[0], b);
+  EventLoop loop(tunfd, fds[0], 2, b);
   loop.user_space_ip_proxy();
 }
 #endif

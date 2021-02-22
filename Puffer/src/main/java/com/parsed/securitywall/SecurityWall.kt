@@ -9,6 +9,7 @@ import android.net.Uri
 import android.net.VpnService
 import android.os.Bundle
 import android.os.IBinder
+import android.provider.Settings
 import android.util.Log
 import android.util.TypedValue
 import android.view.View
@@ -159,6 +160,11 @@ class SecurityWall : AppCompatActivity() {
     fun showLiveView(btn: View) {
         val liveView = Intent(this, LiveView::class.java)
         startActivity(liveView)
+    }
+
+    fun showSettings(btn: View) {
+        val settingsActivity = Intent(this, SettingsActivity::class.java)
+        startActivity(settingsActivity)
     }
 
     fun testAdblocker(btn: View) {

@@ -10,7 +10,7 @@
 
 extern "C" JNIEXPORT void JNICALL
 Java_com_parsed_securitywall_SecurityFilter_launch(JNIEnv *env, jobject service, jint tunfd,
-                                                   jint quitfd,
+                                                   jint quitfd, jint lanBlockLevel,
                                                    jstring blockListStr) {
 
     const char *cstr = env->GetStringUTFChars(blockListStr, NULL);
@@ -32,7 +32,7 @@ Java_com_parsed_securitywall_SecurityFilter_launch(JNIEnv *env, jobject service,
 
     debug("Creating event loop");
 
-    EventLoop loop(tunfd, quitfd, b, env, service);
+    EventLoop loop(tunfd, quitfd, lanBlockLevel, b, env, service);
 
     debug("Entering proxy");
     loop.user_space_ip_proxy();
