@@ -113,7 +113,7 @@ private:
               stat.tcp_bytes_in, stat.tcp_bytes_out, expired, stat.blocked);
 
 #if defined(__ANDROID__)
-        log("Reporting in to Android");
+        //log("Reporting in to Android");
         jni_env->CallVoidMethod(jni_service, report_method, (jlong) tcp, (jlong) stat.tcp_total,
                                 (jlong) udp, (jlong) stat.udp_total,
                                 (jlong) (stat.tcp_bytes_in + stat.udp_bytes_in),
@@ -316,6 +316,40 @@ private:
         debug("ICMP currently unsupported - TODO");
     }
 
+    inline bool should_drop_reserved(ip *hdr) const {
+
+      // Drop the multicast ranges
+      if (lanBlockLevel > NO_BLOCK) {
+
+        uint8_t first_octet = ntohl(hdr->daddr) >> 24;
+        uint8_t second_octet = (ntohl(hdr->daddr) >> 16) & 0xFF;
+        //log("%i %i", first_octet, second_octet);
+
+        if (first_octet >= 224 && first_octet <= 239) {
+          return true;
+        }
+
+        // Drop the remaining reserved ranges
+        if (lanBlockLevel == LAN_BLOCK) {
+
+          // TODO: This list can be refined further but this captures most LAN traffic
+          if (first_octet == 10) {
+            return true;
+          }
+
+          if (first_octet == 172 && second_octet == 16) {
+            return true;
+          }
+
+          if (first_octet == 192 && second_octet == 168) {
+            return true;
+          }
+        }
+      }
+
+      return false;
+    }
+
     inline void process_tun_packet(char bytes[MTU], size_t len, timespec const &cur_time) {
 
         // Check we received a full IP packet
@@ -327,14 +361,14 @@ private:
         DROP_GUARD(hdr->version == 4);
         DROP_GUARD(hdr->daddr != 0xffffffff);
 
-        // TODO: This is nice for me but screws with Conor. but should be an option
-        // Drop the multicast ranges
-        // uint8_t first_octet = ntohl(hdr->daddr) >> 24;
-        // DROP_GUARD(first_octet < 224 || first_octet > 239);
-
         size_t ip_header_size_bytes = hdr->ihl << 2;
 
         DROP_GUARD(ip_header_size_bytes >= IP_HEADER_MIN_SIZE);
+
+        if (should_drop_reserved(hdr)) {
+          debug("Drop packet on reserved range");
+          return;
+        }
 
         char *rest = bytes + ip_header_size_bytes;
         len -= ip_header_size_bytes;
