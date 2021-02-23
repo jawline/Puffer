@@ -22,7 +22,8 @@ int main() {
 
   debug("Loading block list");
   FILE *blist = fopen("lists/base.txt", "r");
-  BlockList b(blist);
+  FILE *alist = fopen("lists/allow.txt", "r");
+  BlockList b(blist, alist);
 
   debug("Creating event loop");
   EventLoop loop(tunfd, fds[0], 2, b);

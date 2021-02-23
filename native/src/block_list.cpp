@@ -19,34 +19,51 @@ static inline void trim(std::string &s) {
     rtrim(s);
 }
 
-BlockList::BlockList() {}
+static inline std::vector<std::string> read_list_from_file(FILE *source) {
+  std::vector<std::string> result_list;
+  char buffer[4096];
 
-BlockList::BlockList(FILE *source) {
-    char buffer[4096];
-
-    bool first = true;
-    int count;
-
-    while (fgets(buffer, sizeof(buffer), source)) {
-        if (strlen(buffer) > 0 && buffer[0] != '#') {
-            std::string line = buffer;
-            trim(line);
-            debug("%s", line.c_str());
-            this->block_includes.push_back(line);
-        }
+  while (fgets(buffer, sizeof(buffer), source)) {
+    if (strlen(buffer) > 0 && buffer[0] != '#') {
+      std::string line = buffer;
+      trim(line);
+      debug("%s", line.c_str());
+      result_list.push_back(line);
     }
+  }
 
-    fclose(source);
+  fclose(source);
+
+  return result_list;
 }
 
-bool BlockList::block(char const *hostname) const {
+BlockList::BlockList() {}
+
+BlockList::BlockList(FILE *source_block, FILE *source_allow) {
+  this->block_includes = read_list_from_file(source_block);
+  this->allow_includes = read_list_from_file(source_allow);
+}
+
+bool BlockList::is_in_blocklist(std::string const& hostname) const {
+  for (size_t i = 0; i < this->block_includes.size(); i++) {
+    if (hostname.find(this->block_includes[i]) != std::string::npos) {
+      return true;
+    }
+  }
+  return false;
+}
+
+bool BlockList::is_in_allowlist(std::string const& hostname) const {
+  for (size_t i = 0; i < this->allow_includes.size(); i++) {
+    if (hostname.find(this->allow_includes[i]) != std::string::npos) {
+      return true;
+    }
+  }
+  return false;
+}
+
+bool BlockList::block(std::string const& hostname) const {
     // TODO: This should be a unified regular expression but it's too complex out
     // of the box for C++'s regex style. We can improve this later
-    auto host = std::string(hostname);
-    for (size_t i = 0; i < this->block_includes.size(); i++) {
-        if (host.find(this->block_includes[i]) != std::string::npos) {
-            return true;
-        }
-    }
-    return false;
+    return is_in_blocklist(hostname) && !is_in_allowlist(hostname);
 }
