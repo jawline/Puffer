@@ -8,7 +8,7 @@
 #include "core.h"
 #include <sys/mman.h>
 
-FILE* mk_tmpfile(jstring s) {
+FILE* mk_tmpfile(JNIEnv *env, jstring s) {
   const char *cstr = env->GetStringUTFChars(s, NULL);
 
   FILE *bfile = tmpfile();
@@ -31,8 +31,8 @@ extern "C" JNIEXPORT void JNICALL
 Java_com_parsed_securitywall_SecurityFilter_launch(JNIEnv *env, jobject service, jint tunfd,
                                                    jint quitfd, jint lanBlockLevel,
                                                    jstring blockListStr, jstring allowListStr) {
-    auto bfile = mk_tmpfile(blockListStr);
-    auto afile = mk_tmpfile(allowListStr);
+    auto bfile = mk_tmpfile(env, blockListStr);
+    auto afile = mk_tmpfile(env, allowListStr);
 
     BlockList b(bfile, afile);
 

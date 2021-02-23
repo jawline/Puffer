@@ -10,6 +10,14 @@
         android:layout_height="wrap_content"
         android:orientation="vertical">
 
+        <Button
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:padding="15dp"
+            android:text="@string/block_lists"
+            android:onClick="launchBlocklists"
+            android:textAlignment="center"></Button>
+
         <Switch
             android:id="@+id/tgl_block_upnp"
             android:layout_width="match_parent"

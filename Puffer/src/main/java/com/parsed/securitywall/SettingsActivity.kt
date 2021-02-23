@@ -1,6 +1,7 @@
 package com.parsed.securitywall
 
 import android.content.Context
+import android.content.Intent
 import android.os.Bundle
 import android.util.Log
 import android.view.View
@@ -67,6 +68,11 @@ class SettingsActivity: AppCompatActivity() {
         settings!!.blockLan = (view as Switch).isChecked
         Log.d(TAG, "Set LAN to " + (view as Switch).isChecked)
         checkIfLanForcesUpnp()
+    }
+
+    fun launchBlocklists(view: View) {
+        val blockList = Intent(this, BlockListActivity::class.java)
+        startActivity(blockList)
     }
 
     fun checkIfLanForcesUpnp() {

@@ -32,6 +32,12 @@
             android:configChanges="orientation|keyboardHidden"
             android:screenOrientation="portrait"></activity>
 
+        <activity
+            android:name=".BlockListActivity"
+            android:configChanges="orientation|keyboardHidden"
+            android:screenOrientation="portrait"></activity>
+
+
         <service
             android:name=".SecurityService"
             android:permission="android.permission.BIND_VPN_SERVICE">
