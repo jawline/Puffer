@@ -1,37 +1,66 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout
-    xmlns:android="http://schemas.android.com/apk/res/android" android:layout_width="match_parent"
+<androidx.coordinatorlayout.widget.CoordinatorLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
     android:layout_height="match_parent"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     android:background="?attr/colorBackground"
     android:orientation="vertical">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:orientation="vertical">
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="horizontal">
+        
         <com.google.android.material.tabs.TabLayout
+            android:id="@+id/tabLayout"
             android:layout_width="match_parent"
-            android:layout_height="wrap_content">
+            android:layout_height="wrap_content"
+
+            app:tabIndicatorColor="?attr/colorPrimaryVariant"
+            app:tabBackground="?attr/colorPrimary"
+            app:tabSelectedTextColor="?attr/colorOnPrimary"
+            app:tabTextColor="?attr/colorOnSecondary"
+            >
             <com.google.android.material.tabs.TabItem
                 android:id="@+id/block"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
+                android:tag="block"
                 android:text="Block" />
 
             <com.google.android.material.tabs.TabItem
                 android:id="@+id/allow"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
+                android:tag="allow"
                 android:text="Allow" />
         </com.google.android.material.tabs.TabLayout>
     </LinearLayout>
     <ScrollView
         android:layout_width="match_parent"
-        android:layout_height="wrap_content">
+        android:layout_height="match_parent"
+        >
         <LinearLayout
             android:id="@+id/block_list"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
+            android:layout_marginBottom="40dp"
             android:orientation="vertical">
         </LinearLayout>
     </ScrollView>
-</LinearLayout>
+    </LinearLayout>
+
+    <com.google.android.material.floatingactionbutton.FloatingActionButton
+        android:id="@+id/add_button"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="end|bottom"
+        android:layout_margin="16dp"
+        android:contentDescription="New Item"
+        android:src="@android:drawable/ic_menu_add"
+        android:onClick="addNewItem"/>
+</androidx.coordinatorlayout.widget.CoordinatorLayout>

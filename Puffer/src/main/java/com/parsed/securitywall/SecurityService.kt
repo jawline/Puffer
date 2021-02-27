@@ -43,7 +43,14 @@ class SecurityService : VpnService(), Handler.Callback {
 
     private fun connect() {
         Log.d(TAG, "Starting SecurityFilter thread")
-        mSecurityFilter = Util.readRawTextFile(this, R.raw.base)?.let { SecurityFilter(this, it) }
+
+        val blockListBase = Util.readRawTextFile(this, R.raw.base)!!
+        val blockListAddition = BlockListActivity.block(this).asString()
+        val allowList = BlockListActivity.allow(this).asString()
+
+        Log.d(TAG, "Additional: " + blockListAddition)
+
+        mSecurityFilter = SecurityFilter(this, blockListBase + blockListAddition, allowList)
         mSecurityFilter!!.start()
         running.set(true)
     }

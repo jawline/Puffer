@@ -7,8 +7,9 @@ import android.util.Log
 import androidx.annotation.RequiresApi
 import java.io.FileOutputStream
 
-class SecurityFilter(service: SecurityService, blockList: String) : Thread() {
+class SecurityFilter(service: SecurityService, blockList: String, allowList: String) : Thread() {
     val blockList = blockList
+    val allowList = allowList
     var currentTcp = 0L
     var currentUdp = 0L
     var lastTcp = 0L
@@ -20,7 +21,7 @@ class SecurityFilter(service: SecurityService, blockList: String) : Thread() {
     val mService = service
     var quit: FileOutputStream? = null
 
-    external fun launch(fd: Int, quit_fd: Int, lan_block_level: Int, blockList: String)
+    external fun launch(fd: Int, quit_fd: Int, lan_block_level: Int, blockList: String, allowList: String)
 
     fun protect(fd: Int) {
         Log.d(TAG, "Protected socket: $fd")
@@ -106,7 +107,7 @@ class SecurityFilter(service: SecurityService, blockList: String) : Thread() {
         quit = FileOutputStream(quitPipe[1].fileDescriptor)
 
         Log.d(TAG, "Entering native portion")
-        launch(tunFd, quitPipe[0].fd, settings.nativeBlockMode, blockList)
+        launch(tunFd, quitPipe[0].fd, settings.nativeBlockMode, blockList, allowList)
 
         interfaceFileDescriptor.close()
         quitPipe[0].close()
