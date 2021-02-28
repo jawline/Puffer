@@ -14,7 +14,11 @@
         android:background="?attr/colorBackground"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toTopOf="parent"></com.google.android.material.tabs.TabLayout>
+        app:layout_constraintTop_toTopOf="parent"
+        app:tabIndicatorColor="?attr/colorPrimaryVariant"
+        app:tabBackground="?attr/colorPrimary"
+        app:tabSelectedTextColor="?attr/colorOnPrimary"
+        app:tabTextColor="?attr/colorOnSecondary"></com.google.android.material.tabs.TabLayout>
 
 
 </LinearLayout>
