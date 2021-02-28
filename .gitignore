@@ -26,3 +26,4 @@ native/dev/Makefile
 libsecurity_wall.a
 libsecurity_wall.so
 testMode
+*.aab
