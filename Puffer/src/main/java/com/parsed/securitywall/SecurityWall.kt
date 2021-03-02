@@ -102,10 +102,10 @@ class SecurityWall : AppCompatActivity() {
         if (mSecurityService != null) {
             this.findViewById<TextView>(R.id.current_connections).text =
                 "" + mSecurityService!!.currentConnections()
-            this.findViewById<TextView>(R.id.session_blocked).text =
-                "" + mSecurityService!!.sessionBlocked()
-            this.findViewById<TextView>(R.id.session_connections).text =
-                "" + mSecurityService!!.sessionConnections()
+            //this.findViewById<TextView>(R.id.session_blocked).text =
+            //    "" + mSecurityService!!.sessionBlocked()
+            //this.findViewById<TextView>(R.id.session_connections).text =
+            //    "" + mSecurityService!!.sessionConnections()
             //this.findViewById<TextView>(R.id.session_bytes).text =
             //    "" + bytesToString(mSecurityService!!.sessionBytes())
 
@@ -113,8 +113,8 @@ class SecurityWall : AppCompatActivity() {
                 "" + mSecurityService!!.totalBlocked()
             this.findViewById<TextView>(R.id.total_connections).text =
                 "" + mSecurityService!!.totalConnections()
-            //this.findViewById<TextView>(R.id.total_bytes).text =
-            //    "" + bytesToString(mSecurityService!!.totalBytes())
+            this.findViewById<TextView>(R.id.total_bytes).text =
+                "" + bytesToString(mSecurityService!!.totalBytes())
         }
     }
 

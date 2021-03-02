@@ -19,7 +19,7 @@
 
         <androidx.constraintlayout.widget.ConstraintLayout
             android:layout_width="match_parent"
-            android:layout_height="260dp">
+            android:layout_height="300dp">
 
             <TextView
                 android:id="@+id/status_text"
@@ -27,6 +27,7 @@
                 android:layout_height="wrap_content"
                 android:textSize="30dp"
                 android:textStyle="bold"
+                android:layout_marginTop="20dp"
                 app:layout_constraintBottom_toTopOf="@id/status_image"
                 app:layout_constraintEnd_toEndOf="parent"
                 app:layout_constraintStart_toStartOf="parent"
@@ -35,7 +36,7 @@
             <ImageView
                 android:id="@+id/status_image"
                 android:layout_width="wrap_content"
-                android:layout_height="130dp"
+                android:layout_height="160dp"
                 android:minWidth="0dp"
                 android:minHeight="0dp"
                 app:layout_constraintBottom_toTopOf="@id/status_toggle"
@@ -72,35 +73,43 @@
         app:cardCornerRadius="0dp"
         app:cardElevation="0dp"
         app:contentPadding="5dp"
+        app:layout_constraintBottom_toTopOf="@+id/buttons"
         app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toBottomOf="@id/toggle_view">
 
         <TableLayout
             android:layout_width="fill_parent"
             android:layout_height="match_parent"
             android:stretchColumns="1">
-
             <TableRow>
-
                 <TextView
                     android:padding="10dp"
-                    android:text="This Session"
+                    android:text="Usage Statistics"
                     android:textStyle="bold" />
             </TableRow>
+            <!--
+                        <TableRow>
 
-            <TableRow>
+                            <TextView
+                                android:padding="10dp"
+                                android:text="This Session"
+                                android:textStyle="bold" />
+                        </TableRow>
 
-                <TextView
-                    android:padding="10dp"
-                    android:text="Blocked:" />
+                        <TableRow>
 
-                <TextView
-                    android:id="@+id/session_blocked"
-                    android:gravity="right"
-                    android:padding="10dp"
-                    android:text="" />
-            </TableRow>
+                            <TextView
+                                android:padding="10dp"
+                                android:text="Blocked:" />
 
+                            <TextView
+                                android:id="@+id/session_blocked"
+                                android:gravity="right"
+                                android:padding="10dp"
+                                android:text="" />
+                        </TableRow>
+-->
 
             <TableRow>
 
@@ -114,33 +123,32 @@
                     android:padding="10dp"
                     android:text="" />
             </TableRow>
+            <!--
+                        <TableRow>
 
-            <TableRow>
+                            <TextView
+                                android:padding="10dp"
+                                android:text="Connections Inspected:" />
 
-                <TextView
-                    android:padding="10dp"
-                    android:text="Connections Inspected:" />
+                            <TextView
+                                android:id="@+id/session_connections"
+                                android:gravity="right"
+                                android:padding="10dp"
+                                android:text="" />
+                        </TableRow>
 
-                <TextView
-                    android:id="@+id/session_connections"
-                    android:gravity="right"
-                    android:padding="10dp"
-                    android:text="" />
-            </TableRow>
-<!--
-            <TableRow>
+                        <TableRow>
 
-                <TextView
-                    android:padding="10dp"
-                    android:text="Bytes Transferred:" />
+                            <TextView
+                                android:padding="10dp"
+                                android:text="Bytes Transferred:" />
 
-                <TextView
-                    android:id="@+id/session_bytes"
-                    android:gravity="right"
-                    android:padding="10dp"
-                    android:text="" />
-            </TableRow>
-            -->
+                            <TextView
+                                android:id="@+id/session_bytes"
+                                android:gravity="right"
+                                android:padding="10dp"
+                                android:text="" />
+                        </TableRow>
 
             <TableRow>
 
@@ -149,12 +157,13 @@
                     android:text="Lifetime"
                     android:textStyle="bold" />
             </TableRow>
+                        -->
 
             <TableRow>
 
                 <TextView
                     android:padding="10dp"
-                    android:text="Total Blocked Trackers:" />
+                    android:text="Blocked Trackers:" />
 
                 <TextView
                     android:id="@+id/total_blocked"
@@ -176,7 +185,6 @@
                     android:text="" />
             </TableRow>
 
-            <!---
             <TableRow>
 
                 <TextView
@@ -189,7 +197,6 @@
                     android:padding="10dp"
                     android:text="" />
             </TableRow>
-            -->
         </TableLayout>
 
     </androidx.cardview.widget.CardView>
@@ -198,9 +205,9 @@
         android:id="@+id/buttons"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
+        app:layout_constraintBottom_toTopOf="@+id/textView"
         app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toBottomOf="@id/stats_card">
+        app:layout_constraintStart_toStartOf="parent">
 
         <ImageButton
             android:id="@+id/bAnalytics"
@@ -225,21 +232,22 @@
             android:id="@+id/bSettings"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginTop="10dp"
             android:layout_marginLeft="10dp"
+            android:layout_marginTop="10dp"
             android:background="#000000F0"
             android:onClick="showSettings"
             android:src="@drawable/ic_settings_applications_24px" />
     </LinearLayout>
 
     <TextView
+        android:id="@+id/textView"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:padding="8dp"
         android:text="@string/please_clear_cache"
         android:textAlignment="center"
+        app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toBottomOf="@id/buttons"></TextView>
+        app:layout_constraintStart_toStartOf="parent"></TextView>
 
 </androidx.constraintlayout.widget.ConstraintLayout>
