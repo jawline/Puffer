@@ -93,6 +93,7 @@ private:
         if (socket->blocked) {
             jstring sni_str = jni_env->NewStringUTF(socket->stream_name);
             jni_env->CallVoidMethod(jni_service, report_block_method, sni_str);
+            jni_env->DeleteLocalRef(sni_str);
         }
 #endif
 
@@ -130,6 +131,8 @@ private:
                 jstring sni_str = jni_env->NewStringUTF(conn.second->stream_name);
                 jni_env->CallVoidMethod(jni_service, report_conn_method, sni_str, ip_str,
                                         conn.second->dst.sin_port);
+                jni_env->DeleteLocalRef(ip_str);
+                jni_env->DeleteLocalRef(sni_str);
             }
         }
 
@@ -140,6 +143,8 @@ private:
                 jstring sni_str = jni_env->NewStringUTF(conn.second->stream_name);
                 jni_env->CallVoidMethod(jni_service, report_conn_method, sni_str, ip_str,
                                         conn.second->dst.sin_port);
+                jni_env->DeleteLocalRef(ip_str);
+                jni_env->DeleteLocalRef(sni_str);
             }
         }
 

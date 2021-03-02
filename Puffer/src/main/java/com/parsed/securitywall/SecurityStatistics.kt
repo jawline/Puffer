@@ -43,7 +43,7 @@ class SecurityStatistics {
                 if (res == null) {
                   return SecurityStatistics()
                 } else {
-                  return res!!
+                  return res
                 }
             } catch (e: IOException) {
                 return SecurityStatistics()

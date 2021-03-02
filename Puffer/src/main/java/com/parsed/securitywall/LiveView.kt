@@ -22,7 +22,7 @@ class LiveView : AppCompatActivity() {
     private var mBlockView: View? = null
     private var mCurrentView: View? = null
 
-    fun rootView() = findViewById<LinearLayout>(R.id.analysis_root)
+    private fun rootView(): LinearLayout = findViewById<LinearLayout>(R.id.analysis_root)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -73,7 +73,7 @@ class LiveView : AppCompatActivity() {
         })
     }
 
-    fun add(table: TableLayout, sni: String, ip: String, port: String) {
+    private fun add(table: TableLayout, sni: String, ip: String, _port: String) {
 
         val childLayout = View.inflate(this, R.layout.live_view_item, null)
         childLayout.findViewById<TextView>(R.id.sni).text = sni

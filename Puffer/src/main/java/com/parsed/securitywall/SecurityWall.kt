@@ -9,7 +9,6 @@ import android.net.Uri
 import android.net.VpnService
 import android.os.Bundle
 import android.os.IBinder
-import android.provider.Settings
 import android.util.Log
 import android.util.TypedValue
 import android.view.View
@@ -45,7 +44,7 @@ class SecurityWall : AppCompatActivity() {
         super.onActivityResult(requestCode, resultCode, data)
         if (resultCode != Activity.RESULT_OK) {
             finish()
-            return;
+            return
         }
         bindSecurityService()
     }
@@ -54,14 +53,14 @@ class SecurityWall : AppCompatActivity() {
     private fun getSecurityServiceIntent(ctx: Context): Intent =
         Intent(ctx, SecurityService::class.java)
 
-    fun startSecurityService(ctx: Context) =
+    private fun startSecurityService(ctx: Context) =
         ctx.startService(getSecurityServiceIntent(ctx).setAction(SecurityService.ACTION_START))
 
-    fun stopSecurityService(ctx: Context) =
+    private fun stopSecurityService(ctx: Context) =
         ctx.startService(getSecurityServiceIntent(ctx).setAction(SecurityService.ACTION_STOP))
 
     fun toggleProtection(toggleSwitch: View) {
-        val toggleSwitch: Switch = toggleSwitch as Switch
+        toggleSwitch as Switch
         Log.d(TAG, "Toggling")
         if (toggleSwitch.isChecked) {
             startSecurityService(this)
@@ -107,15 +106,15 @@ class SecurityWall : AppCompatActivity() {
                 "" + mSecurityService!!.sessionBlocked()
             this.findViewById<TextView>(R.id.session_connections).text =
                 "" + mSecurityService!!.sessionConnections()
-            this.findViewById<TextView>(R.id.session_bytes).text =
-                "" + bytesToString(mSecurityService!!.sessionBytes())
+            //this.findViewById<TextView>(R.id.session_bytes).text =
+            //    "" + bytesToString(mSecurityService!!.sessionBytes())
 
             this.findViewById<TextView>(R.id.total_blocked).text =
                 "" + mSecurityService!!.totalBlocked()
             this.findViewById<TextView>(R.id.total_connections).text =
                 "" + mSecurityService!!.totalConnections()
-            this.findViewById<TextView>(R.id.total_bytes).text =
-                "" + bytesToString(mSecurityService!!.totalBytes())
+            //this.findViewById<TextView>(R.id.total_bytes).text =
+            //    "" + bytesToString(mSecurityService!!.totalBytes())
         }
     }
 
@@ -157,17 +156,17 @@ class SecurityWall : AppCompatActivity() {
         }
     }
 
-    fun showLiveView(btn: View) {
+    fun showLiveView(_btn: View) {
         val liveView = Intent(this, LiveView::class.java)
         startActivity(liveView)
     }
 
-    fun showSettings(btn: View) {
+    fun showSettings(_btn: View) {
         val settingsActivity = Intent(this, SettingsActivity::class.java)
         startActivity(settingsActivity)
     }
 
-    fun testAdblocker(btn: View) {
+    fun testAdblocker(_btn: View) {
         val browserIntent =
             Intent(Intent.ACTION_VIEW, Uri.parse("https://ads-blocker.com/testing/"))
         startActivity(browserIntent)

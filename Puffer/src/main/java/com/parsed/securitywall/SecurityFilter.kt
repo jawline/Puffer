@@ -7,9 +7,7 @@ import android.util.Log
 import androidx.annotation.RequiresApi
 import java.io.FileOutputStream
 
-class SecurityFilter(service: SecurityService, blockList: String, allowList: String) : Thread() {
-    val blockList = blockList
-    val allowList = allowList
+class SecurityFilter(service: SecurityService, val blockList: String, val allowList: String) : Thread() {
     var currentTcp = 0L
     var currentUdp = 0L
     var lastTcp = 0L
@@ -66,7 +64,7 @@ class SecurityFilter(service: SecurityService, blockList: String, allowList: Str
     }
 
     fun reportFinished() {
-        mService.reportFinished();
+        mService.reportFinished()
     }
 
     override fun interrupt() {
@@ -84,8 +82,8 @@ class SecurityFilter(service: SecurityService, blockList: String, allowList: Str
 
         Log.i(TAG, "Starting SecurityFilter")
 
-        vpnBuilder.allowFamily(AF_INET);
-        vpnBuilder.addDnsServer("1.1.1.1");
+        vpnBuilder.allowFamily(AF_INET)
+        vpnBuilder.addDnsServer("1.1.1.1")
         vpnBuilder.addDisallowedApplication("com.parsed.securitywall")
         vpnBuilder.addAddress("10.142.69.35", 32)
         vpnBuilder.addRoute("0.0.0.0", 0)

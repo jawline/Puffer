@@ -127,7 +127,7 @@
                     android:padding="10dp"
                     android:text="" />
             </TableRow>
-
+<!--
             <TableRow>
 
                 <TextView
@@ -140,6 +140,7 @@
                     android:padding="10dp"
                     android:text="" />
             </TableRow>
+            -->
 
             <TableRow>
 
@@ -175,6 +176,7 @@
                     android:text="" />
             </TableRow>
 
+            <!---
             <TableRow>
 
                 <TextView
@@ -187,6 +189,7 @@
                     android:padding="10dp"
                     android:text="" />
             </TableRow>
+            -->
         </TableLayout>
 
     </androidx.cardview.widget.CardView>

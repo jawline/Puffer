@@ -21,7 +21,7 @@ class SettingsActivity: AppCompatActivity() {
             set(value) {
                 val editor = preferences.edit()
                 editor.putBoolean(BLOCK_UPNP, value)
-                editor.commit()
+                editor.apply()
             }
 
         var blockLan: Boolean
@@ -29,7 +29,7 @@ class SettingsActivity: AppCompatActivity() {
             set(value) {
                 val editor = preferences.edit()
                 editor.putBoolean(BLOCK_LAN, value)
-                editor.commit()
+                editor.apply()
             }
 
         val nativeBlockMode: Int
@@ -60,17 +60,17 @@ class SettingsActivity: AppCompatActivity() {
         // Don't modify the setting if the LAN option is checked (it supercedes this)
         if (!settings!!.blockLan) {
             settings!!.blockUpnp = (view as Switch).isChecked
-            Log.d(TAG, "Set UPnP to " + (view as Switch).isChecked)
+            Log.d(TAG, "Set UPnP to " + view.isChecked)
         }
     }
 
     fun onBlockLANToggle(view: View) {
         settings!!.blockLan = (view as Switch).isChecked
-        Log.d(TAG, "Set LAN to " + (view as Switch).isChecked)
+        Log.d(TAG, "Set LAN to " + view.isChecked)
         checkIfLanForcesUpnp()
     }
 
-    fun launchBlocklists(view: View) {
+    fun launchBlocklists(_view: View) {
         val blockList = Intent(this, BlockListActivity::class.java)
         startActivity(blockList)
     }

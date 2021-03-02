@@ -46,18 +46,6 @@
   if (r < 0) {                                                                                                                                                 \
     log("Guard violated. errno=%i", errno);                                                                                                                    \
     abort();                                                                                                                                                   \
-  }                                                                                                                                                            \
-  r
-
-/* Use macro version for line numbers
-template<typename T>
-static inline T fatal_guard(T r) {
-  if (r < 0) {
-    log("Guard violated");
-    abort();
   }
-  return r;
-}
- */
 
 #endif

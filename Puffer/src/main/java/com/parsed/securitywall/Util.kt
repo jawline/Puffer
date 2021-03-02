@@ -12,10 +12,10 @@ class Util {
             val inputStream: InputStream = ctx.resources.openRawResource(resId)
             val inputreader = InputStreamReader(inputStream)
             val buffreader = BufferedReader(inputreader)
-            var line: String? = null
+            var line: String?
             val text = StringBuilder()
             try {
-                while (buffreader.readLine().also({ line = it }) != null) {
+                while (buffreader.readLine().also { line = it } != null) {
                     text.append(line)
                     text.append('\n')
                 }

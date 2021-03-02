@@ -6,6 +6,8 @@ import android.net.VpnService
 import android.os.*
 import android.util.Log
 import androidx.annotation.RequiresApi
+import androidx.core.app.NotificationCompat
+import androidx.core.app.NotificationManagerCompat
 import androidx.databinding.ObservableBoolean
 import com.viliussutkus89.android.tmpfile.Tmpfile
 import java.io.*
@@ -15,7 +17,7 @@ class SecurityService : VpnService(), Handler.Callback {
     private var mStatistics: SecurityStatistics? = null
 
     val mCurrentConns = ArrayList<ConnectionInfo>()
-    val mSessionBlocked = HashMap<String, Long>();
+    val mSessionBlocked = HashMap<String, Long>()
 
     private val mBinder: IBinder = LocalBinder()
 
@@ -25,19 +27,20 @@ class SecurityService : VpnService(), Handler.Callback {
     }
 
     private fun statsFile() = File(this.cacheDir.absolutePath + ".stats")
-    private fun notificationManager() = getSystemService(
-        android.content.Context.NOTIFICATION_SERVICE
-    ) as android.app.NotificationManager
+    private fun notificationManager() = NotificationManagerCompat.from(this)
 
     override fun onCreate() {
         Tmpfile.init(applicationContext.cacheDir)
         mStatistics = SecurityStatistics.load(statsFile())
-        notificationManager().createNotificationChannel(
-            NotificationChannel(
-                NOTIFICATION_CHANNEL_ID, NOTIFICATION_CHANNEL_ID,
-                NotificationManager.IMPORTANCE_MIN
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            notificationManager().createNotificationChannel(
+                NotificationChannel(
+                    NOTIFICATION_CHANNEL_ID, NOTIFICATION_CHANNEL_ID,
+                    NotificationManager.IMPORTANCE_MIN
+                )
             )
-        )
+        }
         Log.d(TAG, "Service Created")
     }
 
@@ -48,7 +51,7 @@ class SecurityService : VpnService(), Handler.Callback {
         val blockListAddition = BlockListActivity.block(this).asString()
         val allowList = BlockListActivity.allow(this).asString()
 
-        Log.d(TAG, "Additional: " + blockListAddition)
+        Log.d(TAG, "Additional: $blockListAddition")
 
         mSecurityFilter = SecurityFilter(this, blockListBase + blockListAddition, allowList)
         mSecurityFilter!!.start()
@@ -60,8 +63,7 @@ class SecurityService : VpnService(), Handler.Callback {
         if (mSecurityFilter != null) {
             Log.d(TAG, "Really stopping the thread")
             mSecurityFilter?.interrupt()
-            while (mSecurityFilter?.isAlive == true) {
-            }
+            while (mSecurityFilter?.isAlive == true) {}
             mSecurityFilter = null
             running.set(false)
             Log.d(TAG, "Done")
@@ -115,7 +117,7 @@ class SecurityService : VpnService(), Handler.Callback {
     }
 
     fun reportBlock(name: String) {
-        val timesBlocked = mSessionBlocked.getOrDefault(name, 0) + 1
+        val timesBlocked = (mSessionBlocked[name] ?: 0) + 1
         mSessionBlocked[name] = timesBlocked
     }
 
@@ -145,10 +147,11 @@ class SecurityService : VpnService(), Handler.Callback {
         if (mStatistics != null) mStatistics!!.totalBytesIn + mStatistics!!.totalBytesOut else 0
 
     private fun clearNotification() = notificationManager().cancel(1)
+
     private fun updateForegroundNotification() {
         val pending = Intent(this, SecurityService::class.java).setAction(ACTION_STOP)
 
-        var action = Notification.Action.Builder(
+        var action = NotificationCompat.Action.Builder(
             R.drawable.ic_sleeping_light,
             getString(R.string.switch_off),
             PendingIntent.getService(this, 0, pending, 0)
@@ -162,13 +165,13 @@ class SecurityService : VpnService(), Handler.Callback {
             this, 0, openApp, PendingIntent.FLAG_UPDATE_CURRENT
         )
 
-        var bigTextStyle = Notification.BigTextStyle().bigText(
+        val bigTextStyle = NotificationCompat.BigTextStyle().bigText(
             getString(
                 R.string.monitored
             ) + " " + currentConnections() + "\n" + getString(R.string.life_monitored) + " " + mStatistics!!.totalConnections()
         )
 
-        val notification = Notification.Builder(this, NOTIFICATION_CHANNEL_ID)
+        val notification = NotificationCompat.Builder(this, NOTIFICATION_CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_stat)
             .setStyle(bigTextStyle)
             .setContentTitle(getString(R.string.blocked_trackers) + " " + sessionBlocked())

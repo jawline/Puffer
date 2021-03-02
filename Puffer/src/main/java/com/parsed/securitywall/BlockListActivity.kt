@@ -1,11 +1,9 @@
 package com.parsed.securitywall
 
 import android.app.AlertDialog
-import android.app.Dialog
 import android.content.Context
 import android.content.DialogInterface
 import android.os.Bundle
-import android.text.Editable
 import android.text.InputType
 import android.util.Log
 import android.view.View
@@ -14,9 +12,10 @@ import android.widget.ImageButton
 import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
-import androidx.fragment.app.DialogFragment
+import androidx.core.content.ContextCompat
 import com.google.android.material.tabs.TabLayout
-import com.google.android.material.tabs.TabLayout.*
+import com.google.android.material.tabs.TabLayout.OnTabSelectedListener
+import com.google.android.material.tabs.TabLayout.Tab
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
 import java.io.*
@@ -25,7 +24,7 @@ import java.io.*
 class BlockListActivity: AppCompatActivity() {
 
     class BlockList(context: Context, path: String) {
-        val file = File(context.dataDir.absolutePath + "/" + path)
+        val file = File(ContextCompat.getDataDir(context)!!.absolutePath + "/" + path)
 
         class BlockListContent {
             var list = ArrayList<Pair<Int, String>>()
@@ -79,7 +78,7 @@ class BlockListActivity: AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.block_list_view)
-        this.dataDir
+
         try {
             this.supportActionBar!!.hide()
         } catch (e: NullPointerException) {}
@@ -113,40 +112,40 @@ class BlockListActivity: AppCompatActivity() {
         reloadList()
     }
 
-    fun reloadList() {
+    private fun reloadList() {
         blockList!!.removeAllViews()
         for (entry in entries!!.content.list) {
             addWebsiteItem(entry.first, entry.second)
         }
     }
 
-    fun addNewItem(view: View) {
-        val builder: AlertDialog.Builder? = this?.let {
+    fun addNewItem(_view: View) {
+        val builder: AlertDialog.Builder = this.let {
             AlertDialog.Builder(it)
         }
 
-        builder!!.setTitle("Domain or IP address to block")
+        builder.setTitle("Domain or IP address to block")
 
         // Add the edit text
         val input = EditText(this)
         input.inputType = InputType.TYPE_CLASS_TEXT
         builder.setView(input)
 
-        builder.setPositiveButton("OK",
-            DialogInterface.OnClickListener { dialog, which -> run {
-                entries!!.addItem(input.text.toString())
-                reloadList()
-            }})
-        builder.setNegativeButton("Cancel",
-            DialogInterface.OnClickListener { dialog, which -> dialog.cancel() })
+        builder.setPositiveButton("OK"
+        ) { _, _ -> run {
+            entries!!.addItem(input.text.toString())
+            reloadList()
+        }}
+        builder.setNegativeButton("Cancel"
+        ) { dialog, _ -> dialog.cancel() }
 
-        val dialog: AlertDialog? = builder?.create()
+        val dialog: AlertDialog? = builder.create()
         dialog!!.show()
     }
 
-    fun editItem(id: Int, current: String) {
+    private fun editItem(id: Int, current: String) {
 
-        val builder: AlertDialog.Builder? = this?.let {
+        val builder: AlertDialog.Builder? = this.let {
             AlertDialog.Builder(it)
         }
 
@@ -159,32 +158,32 @@ class BlockListActivity: AppCompatActivity() {
         builder.setView(input)
 
         builder.setPositiveButton("OK",
-            DialogInterface.OnClickListener { dialog, which -> run {
+            DialogInterface.OnClickListener { _, _ -> run {
                 entries!!.deleteItem(id)
                 entries!!.addItem(input.text.toString())
                 reloadList()
             }})
         builder.setNegativeButton("Cancel",
-            DialogInterface.OnClickListener { dialog, which -> dialog.cancel() })
+            DialogInterface.OnClickListener { dialog, _ -> dialog.cancel() })
 
-        val dialog: AlertDialog? = builder?.create()
+        val dialog: AlertDialog? = builder.create()
         dialog!!.show()
     }
 
-    fun addWebsiteItem(id: Int, website: String) {
+    private fun addWebsiteItem(id: Int, website: String) {
         val newItem = View.inflate(this, R.layout.block_list_item, null)
         newItem.findViewById<TextView>(R.id.block_website).text = website
-        newItem.findViewById<ImageButton>(R.id.bEdit).setOnClickListener(View.OnClickListener { view ->
+        newItem.findViewById<ImageButton>(R.id.bEdit).setOnClickListener { _ ->
             run {
                 editItem(id, website)
             }
-        })
-        newItem.findViewById<ImageButton>(R.id.bDelete).setOnClickListener(View.OnClickListener { view ->
+        }
+        newItem.findViewById<ImageButton>(R.id.bDelete).setOnClickListener { _ ->
             run {
                 entries!!.deleteItem(id)
                 reloadList()
             }
-        })
+        }
         blockList!!.addView(newItem)
     }
 
