@@ -109,7 +109,7 @@ class SecurityFilter(service: SecurityService, val blockList: String, val allowL
 
         Log.d(TAG, "Estabished")
 
-        val tunFd = interfaceFileDescriptor!!.fd
+        val tunFd = interfaceFileDescriptor.fd
         val quitPipe = ParcelFileDescriptor.createPipe()
 
         quit = FileOutputStream(quitPipe[1].fileDescriptor)
