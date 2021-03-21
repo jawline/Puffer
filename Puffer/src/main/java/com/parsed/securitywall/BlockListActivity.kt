@@ -139,8 +139,7 @@ class BlockListActivity: AppCompatActivity() {
         builder.setNegativeButton("Cancel"
         ) { dialog, _ -> dialog.cancel() }
 
-        val dialog: AlertDialog? = builder.create()
-        dialog!!.show()
+        builder.create().show()
     }
 
     private fun editItem(id: Int, current: String) {

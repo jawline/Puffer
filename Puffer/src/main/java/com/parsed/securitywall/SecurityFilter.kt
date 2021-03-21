@@ -1,10 +1,8 @@
 package com.parsed.securitywall
 
-import android.os.Build
 import android.os.ParcelFileDescriptor
 import android.system.OsConstants.AF_INET
 import android.util.Log
-import androidx.annotation.RequiresApi
 import java.io.FileOutputStream
 
 class SecurityFilter(service: SecurityService, val blockList: String, val allowList: String) : Thread() {
@@ -41,13 +39,15 @@ class SecurityFilter(service: SecurityService, val blockList: String, val allowL
     ) {
         currentTcp = tcp
         currentUdp = udp
-        mService.report(
-            totalTcp - lastTcp,
-            totalUdp - lastUdp,
-            totalBytesIn - lastBytesIn,
-            totalBytesOut - lastBytesOut,
-            blocked - lastBlocked
-        )
+        synchronized(mService) {
+            mService.report(
+                totalTcp - lastTcp,
+                totalUdp - lastUdp,
+                totalBytesIn - lastBytesIn,
+                totalBytesOut - lastBytesOut,
+                blocked - lastBlocked
+            )
+        }
         lastTcp = totalTcp
         lastUdp = totalUdp
         lastBlocked = blocked
@@ -56,15 +56,21 @@ class SecurityFilter(service: SecurityService, val blockList: String, val allowL
     }
 
     fun reportConn(sni: String, ip: String, port: Int) {
-        mService.reportConn(ConnectionInfo(sni, ip, port))
+        synchronized(mService) {
+            mService.reportConn(ConnectionInfo(sni, ip, port))
+        }
     }
 
     fun reportBlock(sni: String) {
-        mService.reportBlock(sni)
+        synchronized(mService) {
+            mService.reportBlock(sni)
+        }
     }
 
     fun reportFinished() {
-        mService.reportFinished()
+        synchronized (mService) {
+            mService.reportFinished()
+        }
     }
 
     override fun interrupt() {
@@ -75,7 +81,6 @@ class SecurityFilter(service: SecurityService, val blockList: String, val allowL
         }
     }
 
-    @RequiresApi(Build.VERSION_CODES.LOLLIPOP)
     override fun run() {
         val settings = SettingsActivity.Settings(mService)
         val vpnBuilder = mService.Builder()
@@ -97,6 +102,11 @@ class SecurityFilter(service: SecurityService, val blockList: String, val allowL
             interfaceFileDescriptor = vpnBuilder.establish()
         }
 
+        if (interfaceFileDescriptor == null) {
+            Log.d(TAG, "Could not start the VPN service")
+            return
+        }
+
         Log.d(TAG, "Estabished")
 
         val tunFd = interfaceFileDescriptor!!.fd
@@ -112,11 +122,14 @@ class SecurityFilter(service: SecurityService, val blockList: String, val allowL
         quitPipe[1].close()
 
         Log.d(TAG, "Closing file descriptors because interrupted")
+
+        synchronized(mService) {
+            mService.finalizeShutdown()
+        }
     }
 
     companion object {
         const val TAG = "sec_filter"
-
         init {
             System.loadLibrary("security_wall")
         }

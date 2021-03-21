@@ -8,6 +8,8 @@
     <string name="user_unprotected">Unprotected</string>
     <string name="switch_off">Switch Off</string>
     <string name="block_lists">Custom Blocklist</string>
+    <string name="pause">Pause (30 minutes)</string>
+    <string name="resume">Resume</string>
     <string name="please_clear_cache">If adverts are still visible on the testing page please clear your browser cache and try again before filing a report.</string>
     <string name="block_upnp">Block UPnP (Universal Plug and Play) traffic</string>
     <string name="what_is_upnp">UPnP allows devices on your local network to discover each other and communicate. UPnP has been used as a vector for fingerprinting tools, which can use the devices on your local network (LAN) to fingerprint you. Additionally, UPnP has been used as a vector to spread self-propogating through a local network. Blocking UPnP traffic will cause some smart devices like WiFi speakers to stop working. We recommend you disable UPnP traffic if you do not use any smart UPnP LAN devices.</string>

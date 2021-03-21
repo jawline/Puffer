@@ -1,20 +1,25 @@
 package com.parsed.securitywall
 
 import android.app.*
+import android.content.Context
 import android.content.Intent
 import android.net.VpnService
 import android.os.*
 import android.util.Log
-import androidx.annotation.RequiresApi
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.databinding.ObservableBoolean
 import com.viliussutkus89.android.tmpfile.Tmpfile
 import java.io.*
+import java.util.*
+import kotlin.collections.ArrayList
+import kotlin.collections.HashMap
 
 class SecurityService : VpnService(), Handler.Callback {
     private var mSecurityFilter: SecurityFilter? = null
     private var mStatistics: SecurityStatistics? = null
+    private var mTimer: Timer? = null
+    private var mPaused = false
 
     val mCurrentConns = ArrayList<ConnectionInfo>()
     val mSessionBlocked = HashMap<String, Long>()
@@ -64,8 +69,6 @@ class SecurityService : VpnService(), Handler.Callback {
             Log.d(TAG, "Really stopping the thread")
             mSecurityFilter?.interrupt()
             while (mSecurityFilter?.isAlive == true) {}
-            mSecurityFilter = null
-            running.set(false)
             Log.d(TAG, "Done")
         }
     }
@@ -73,17 +76,62 @@ class SecurityService : VpnService(), Handler.Callback {
     val running = ObservableBoolean()
     val reported = ObservableBoolean()
 
-    @RequiresApi(Build.VERSION_CODES.O)
+    fun clearPause() {
+        mPaused = false
+
+        val timer = mTimer
+        if (timer != null) {
+            timer.cancel()
+            mTimer = null
+        }
+    }
+
+    class PauseTimerExpired(mContext: Context): TimerTask() {
+        private val mContext = mContext
+        override fun run() {
+            val resumeIntent = Intent(mContext, SecurityService::class.java).setAction(ACTION_START)
+            mContext.startService(resumeIntent)
+        }
+    }
+
+    fun setupPause() {
+
+        //Clear any existing pause (just in case, should be impossible)
+        clearPause()
+
+        // Set up the new one
+        mTimer = Timer()
+        mTimer!!.schedule(PauseTimerExpired(this), THIRTY_MINUTES)
+
+        mPaused = true
+    }
+
     override fun onStartCommand(intent: Intent, flags: Int, startId: Int): Int {
         Log.d(TAG, "onStart")
         return if (ACTION_STOP == intent.action) {
+            clearPause()
             disconnect()
-            clearNotification()
-            stopForeground(true)
-            //stopSelf()
             Service.START_NOT_STICKY
+        } else if (ACTION_PAUSE == intent.action) {
+
+            // No action if the app is already paused or is off (just to prevent races with other threads / async events)
+            if (mPaused || mSecurityFilter == null) {
+                return Service.START_STICKY;
+            }
+
+            Log.d(TAG, "Pausing")
+            setupPause()
+            disconnect()
+            Service.START_STICKY
         } else {
             Log.d(TAG, "connecting")
+            clearPause()
+
+            // We are still running - do nothing (Should not happen if resume button and timers are correctly self-cancelling)
+            if (mSecurityFilter != null) {
+                return Service.START_STICKY
+            }
+
             connect()
             updateForegroundNotification()
             Service.START_STICKY
@@ -103,12 +151,14 @@ class SecurityService : VpnService(), Handler.Callback {
     }
 
     fun report(newTcp: Long, newUdp: Long, newBytesIn: Long, newBytesOut: Long, newBlocked: Long) {
-        mStatistics!!.totalTcp += newTcp
-        mStatistics!!.totalUdp += newUdp
-        mStatistics!!.totalBytesIn += newBytesIn
-        mStatistics!!.totalBytesOut += newBytesOut
-        mStatistics!!.trackersBlocked += newBlocked
-        mStatistics!!.save(statsFile())
+        if (mStatistics != null) {
+            mStatistics!!.totalTcp += newTcp
+            mStatistics!!.totalUdp += newUdp
+            mStatistics!!.totalBytesIn += newBytesIn
+            mStatistics!!.totalBytesOut += newBytesOut
+            mStatistics!!.trackersBlocked += newBlocked
+            mStatistics!!.save(statsFile())
+        }
         mCurrentConns.clear() // Clear all conns each report the C portion will re-send
     }
 
@@ -119,6 +169,22 @@ class SecurityService : VpnService(), Handler.Callback {
     fun reportBlock(name: String) {
         val timesBlocked = (mSessionBlocked[name] ?: 0) + 1
         mSessionBlocked[name] = timesBlocked
+    }
+
+    fun finalizeShutdown() {
+        Handler(Looper.getMainLooper()).postDelayed({
+            running.set(false)
+            reported.notifyChange()
+            
+            mSecurityFilter = null
+
+            // If we are paused then we display a different notification otherwise we clear notifications on shutdown
+            if (!mPaused) {
+                clearNotification()
+            } else {
+                updateForegroundNotification()
+            }
+        }, 50)
     }
 
     fun reportFinished() {
@@ -146,16 +212,40 @@ class SecurityService : VpnService(), Handler.Callback {
     fun totalBytes() =
         if (mStatistics != null) mStatistics!!.totalBytesIn + mStatistics!!.totalBytesOut else 0
 
-    private fun clearNotification() = notificationManager().cancel(1)
+    private fun clearNotification() = stopForeground(true)
 
     private fun updateForegroundNotification() {
-        val pending = Intent(this, SecurityService::class.java).setAction(ACTION_STOP)
 
-        var action = NotificationCompat.Action.Builder(
-            R.drawable.ic_sleeping_light,
-            getString(R.string.switch_off),
-            PendingIntent.getService(this, 0, pending, 0)
-        ).build()
+        var actions: ArrayList<NotificationCompat.Action> = ArrayList()
+
+        if (!mPaused) {
+            val switchOffIntent = Intent(this, SecurityService::class.java).setAction(ACTION_STOP)
+
+            var switchOffAction = NotificationCompat.Action.Builder(
+                R.drawable.ic_sleeping_light,
+                getString(R.string.switch_off),
+                PendingIntent.getService(this, 0, switchOffIntent, 0)
+            ).build()
+
+            val pauseIntent = Intent(this, SecurityService::class.java).setAction(ACTION_PAUSE)
+
+            var pauseAction = NotificationCompat.Action.Builder(
+                R.drawable.ic_sleeping_light,
+                getString(R.string.pause),
+                PendingIntent.getService(this, 0, pauseIntent, 0)
+            ).build()
+
+            actions.add(pauseAction)
+            actions.add(switchOffAction)
+        } else {
+            val resumeIntent = Intent(this, SecurityService::class.java).setAction(ACTION_START)
+            var resumeAction = NotificationCompat.Action.Builder(
+                R.drawable.ic_sleeping_light,
+                getString(R.string.resume),
+                PendingIntent.getService(this, 0, resumeIntent, 0)
+            ).build()
+            actions.add(resumeAction)
+        }
 
         val openApp = Intent(this, SecurityWall::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
@@ -168,25 +258,30 @@ class SecurityService : VpnService(), Handler.Callback {
         val bigTextStyle = NotificationCompat.BigTextStyle().bigText(
             getString(
                 R.string.monitored
-            ) + " " + currentConnections() + "\n" + getString(R.string.life_monitored) + " " + mStatistics!!.totalConnections()
+            ) + " " + currentConnections() + "\n" + getString(R.string.life_monitored) + " " + totalConnections()
         )
 
-        val notification = NotificationCompat.Builder(this, NOTIFICATION_CHANNEL_ID)
+        var notification = NotificationCompat.Builder(this, NOTIFICATION_CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_stat)
             .setStyle(bigTextStyle)
             .setContentTitle(getString(R.string.blocked_trackers) + " " + sessionBlocked())
-            .setContentIntent(contentIntent)
-            .addAction(action)
-            .setOngoing(true)
-            .build()
+            .setContentIntent(contentIntent);
 
-        notificationManager().notify(1, notification)
+        for (action in actions) {
+            notification = notification.addAction(action)
+        }
+
+        notification = notification.setOngoing(true)
+
+        startForeground(1, notification.build())
     }
 
     companion object {
         const val TAG = "SecurityService"
         const val ACTION_START = "com.parsed.securitywall.START"
         const val ACTION_STOP = "com.parsed.securitywall.STOP"
+        const val ACTION_PAUSE = "com.parsed.securitywall.PAUSE"
         const val NOTIFICATION_CHANNEL_ID = "SecurityWall"
+        const val THIRTY_MINUTES: Long = 1000 * 60 * 30
     }
 }
